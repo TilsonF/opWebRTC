@@ -93,32 +93,70 @@ button.primary:hover { filter: brightness(1.1); }
 /* ── Modo compartir: pantalla grande + participantes en columna derecha ── */
 .stage.sharing #screenView {
   display: block; position: absolute;
-  left: 0; top: 0; right: 240px; bottom: 0;
-  width: auto; height: 100%; object-fit: contain;
+  left: 12px; top: 12px; right: 256px; bottom: 12px;
+  width: auto; height: auto; object-fit: contain; border-radius: 14px;
 }
+/* Columna derecha de participantes, con aire entre tiles. */
 .stage.sharing #remote {
-  inset: auto; right: 0; top: 0;
-  width: 240px; height: 135px; object-fit: cover;
-  border-left: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  inset: auto; right: 12px; top: 12px;
+  width: 232px; height: 130px; object-fit: cover;
+  border: 1px solid var(--border); border-radius: 12px;
 }
 .stage.sharing #local {
-  bottom: auto; right: 0; top: 135px;
-  width: 240px; height: 135px; border-radius: 0;
-  border: none; border-left: 1px solid var(--border); box-shadow: none;
+  bottom: auto; right: 12px; top: 154px; /* 12 + 130 + 12 de separación */
+  width: 232px; height: 130px; border-radius: 12px;
+  border: 1px solid var(--border); box-shadow: none;
 }
-.stage.sharing .placeholder { right: 240px; }
+.stage.sharing .placeholder { right: 256px; }
 
+/* ── Toolbar flotante estilo moderno ── */
 .toolbar {
-  display: flex; align-items: center; justify-content: center; gap: 0.6rem;
-  padding: 0.9rem; border-top: 1px solid var(--border); flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  padding: 0.6rem; margin: 0 auto 0.9rem; flex-wrap: wrap;
+  width: fit-content; max-width: 95vw;
+  background: rgba(22, 27, 34, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
+
 .ctrl {
-  width: 52px; height: 52px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 1.2rem;
-  background: #21262d; border: 1px solid var(--border);
+  width: 50px; height: 50px; padding: 0; border-radius: 14px;
+  display: grid; place-items: center;
+  background: #232a33; border: 1px solid transparent; color: var(--text);
+  transition: background 0.15s ease, transform 0.12s ease, color 0.15s ease;
 }
-.ctrl:hover { background: #30363d; }
-.ctrl.off { background: var(--danger); border-color: var(--danger); }
-.ctrl.active { background: var(--accent); border-color: var(--accent); }
-.ctrl.danger { background: var(--danger); border-color: var(--danger); transform: rotate(135deg); }
-.ctrl-select { max-width: 160px; height: 52px; border-radius: 26px; }
+.ctrl:hover { background: #2d3640; transform: translateY(-2px); }
+.ctrl:active { transform: translateY(0); }
+.ctrl .ic { width: 22px; height: 22px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Estados de toggle (mic/cam) e indicadores */
+.ctrl .ic-off { display: none; }
+.ctrl.off { background: var(--danger); color: #fff; }
+.ctrl.off .ic-on { display: none; }
+.ctrl.off .ic-off { display: block; }
+.ctrl.active { background: var(--accent); color: #fff;
+  box-shadow: 0 0 0 3px rgba(47, 129, 247, 0.25); }
+.ctrl.loading { animation: pulse 1s ease-in-out infinite; }
+.ctrl.danger { background: var(--danger); color: #fff; }
+.ctrl.danger:hover { background: #f0504d; }
+
+@keyframes pulse { 50% { opacity: 0.5; } }
+
+.divider { width: 1px; height: 28px; background: rgba(255, 255, 255, 0.1); margin: 0 0.25rem; }
+
+/* Selectores de dispositivo compactos */
+.select-wrap {
+  display: flex; align-items: center; gap: 0.35rem;
+  height: 50px; padding: 0 0.6rem; border-radius: 14px;
+  background: #232a33; color: #8b949e; max-width: 170px;
+}
+.select-wrap .ic.sm { width: 16px; height: 16px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.select-wrap select {
+  border: none; background: transparent; color: var(--text);
+  padding: 0; max-width: 120px; font-size: 0.85rem; text-overflow: ellipsis;
+}
+.select-wrap select:focus { outline: none; }

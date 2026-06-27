@@ -38,6 +38,7 @@ export class BackgroundBlur {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly maskCtx: CanvasRenderingContext2D;
   private running = false;
+  private lastTs = 0;
   private readonly opts: Required<BlurOptions>;
 
   constructor(opts: BlurOptions = {}) {
@@ -94,12 +95,23 @@ export class BackgroundBlur {
 
   private readonly loop = (): void => {
     if (!this.running) return;
-    if (this.video.readyState >= 2 && this.segmenter) {
-      this.segmenter.segmentForVideo(this.video, performance.now(), (res) => {
-        this.composite(res.categoryMask);
-        res.categoryMask?.close();
-      });
+    try {
+      if (this.video.readyState >= 2 && this.segmenter) {
+        // Timestamp estrictamente creciente (MediaPipe lo exige en modo VIDEO).
+        const ts = Math.max(performance.now(), this.lastTs + 1);
+        this.lastTs = ts;
+        this.segmenter.segmentForVideo(this.video, ts, (res) => {
+          try {
+            this.composite(res.categoryMask);
+          } finally {
+            res.categoryMask?.close();
+          }
+        });
+      }
+    } catch {
+      // Un frame fallido no debe matar el loop (antes congelaba el blur).
     }
+    // Siempre se reprograma, pase lo que pase.
     requestAnimationFrame(this.loop);
   };
 

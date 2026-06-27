@@ -166,7 +166,7 @@ $('blur').onclick = async () => {
     localVideo.srcObject = new MediaStream([cameraTrack]);
     btn.classList.remove('active');
   } else {
-    btn.textContent = '⏳';
+    btn.classList.add('loading');
     // Carga diferida: MediaPipe solo se descarga al activar blur.
     const { BackgroundBlur } = await import('@opwebrtc/core/blur');
     blur = new BackgroundBlur({ blurRadius: 12 });
@@ -174,7 +174,7 @@ $('blur').onclick = async () => {
     await call.replaceOutgoingVideo(blurred);
     localVideo.srcObject = new MediaStream([blurred]);
     blurOn = true;
-    btn.textContent = '🌫️';
+    btn.classList.remove('loading');
     btn.classList.add('active');
   }
 };
