@@ -38,9 +38,14 @@
         </div>
       </header>
 
-      <div class="stage">
+      <div class="stage" id="stage">
+        <!-- Vista principal de pantalla compartida (oculta si nadie comparte) -->
+        <video id="screenView" autoplay playsinline></video>
+        <!-- Cámara remota: principal por defecto, tile a la derecha al compartir -->
         <video id="remote" autoplay playsinline></video>
-        <video id="local" class="pip" autoplay playsinline muted></video>
+        <!-- Cámara local -->
+        <video id="local" autoplay playsinline muted></video>
+        <div id="placeholder" class="placeholder">Esperando al otro participante…</div>
       </div>
 
       <footer class="toolbar">

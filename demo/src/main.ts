@@ -8,6 +8,9 @@ const prejoin = $('prejoin');
 const callView = $('call');
 const localVideo = $<HTMLVideoElement>('local');
 const remoteVideo = $<HTMLVideoElement>('remote');
+const screenView = $<HTMLVideoElement>('screenView');
+const stage = $('stage');
+const placeholder = $('placeholder');
 const stateBadge = $('state');
 const statsBadge = $('stats');
 
@@ -17,6 +20,13 @@ let cameraTrack: MediaStreamTrack | undefined; // track real de cámara (para re
 let blurOn = false;
 let camOn = true;
 let micOn = true;
+let localShare = false;
+let remoteShare = false;
+
+// Layout estilo Meet: si alguien comparte, pantalla grande + participantes a la derecha.
+function updateStage(): void {
+  stage.classList.toggle('sharing', localShare || remoteShare);
+}
 
 const SIGNALING = `ws://${location.hostname}:8080`;
 const ICE_ENDPOINT = `http://${location.hostname}:8080/ice`;
@@ -74,12 +84,34 @@ $('join').onclick = async () => {
     if (!blurOn) localVideo.srcObject = s;
     cameraTrack = s.getVideoTracks()[0];
   });
-  call.on('remoteStream', (s) => (remoteVideo.srcObject = s));
+  call.on('remoteStream', (s) => {
+    remoteVideo.srcObject = s;
+    placeholder.classList.add('hidden');
+  });
+  // El otro se fue: limpiar su vista (sin frame congelado).
+  call.on('remoteLeft', () => {
+    remoteVideo.srcObject = null;
+    remoteShare = false;
+    placeholder.classList.remove('hidden');
+    updateStage();
+  });
+  // Yo comparto pantalla: previsualizo mi propia pantalla como vista principal.
+  call.on('screenShare', (active, s) => {
+    localShare = active;
+    if (active && s) screenView.srcObject = s;
+    $('screen').classList.toggle('active', active);
+    updateStage();
+  });
+  // El otro comparte (o deja de compartir) pantalla.
+  call.on('remoteScreen', (s) => {
+    remoteShare = Boolean(s);
+    if (s) screenView.srcObject = s;
+    updateStage();
+  });
   call.on('stateChange', (s) => {
     stateBadge.textContent = s;
     stateBadge.style.color = s === 'connected' ? '#3fb950' : s === 'failed' ? '#f85149' : '';
   });
-  call.on('screenShare', (active) => $('screen').classList.toggle('active', active));
   call.on('error', (e) => console.error('[opWebRTC]', e.message));
   call.on('audit', (e) => console.debug('[audit]', e.type, e.data ?? ''));
 
@@ -151,10 +183,12 @@ $('hangup').onclick = async () => {
   blur?.stop();
   await call?.hangup();
   call = undefined;
-  blurOn = false;
+  blurOn = localShare = remoteShare = false;
+  updateStage();
   callView.classList.add('hidden');
   prejoin.classList.remove('hidden');
-  localVideo.srcObject = remoteVideo.srcObject = null;
+  placeholder.classList.remove('hidden');
+  localVideo.srcObject = remoteVideo.srcObject = screenView.srcObject = null;
 };
 
 // ── Stats en vivo ─────────────────────────────────────────────────────────────

@@ -117,8 +117,9 @@ export class BackgroundBlur {
     const data = mask.getAsUint8Array();
     const img = this.maskCtx.createImageData(mask.width, mask.height);
     for (let i = 0; i < data.length; i++) {
-      // selfie_segmenter: categoría != 0 => persona (primer plano).
-      img.data[i * 4 + 3] = data[i] !== 0 ? 255 : 0;
+      // selfie_segmenter: categoría 0 => persona (primer plano), resto => fondo.
+      // La persona queda opaca (nítida); el fondo, transparente (se difumina).
+      img.data[i * 4 + 3] = data[i] === 0 ? 255 : 0;
     }
     this.maskCtx.putImageData(img, 0, 0);
 

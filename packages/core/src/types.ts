@@ -77,12 +77,16 @@ export interface DeviceList {
 export interface CallEvents {
   /** Stream local listo (tu cámara/mic). Conéctalo a un <video> muted. */
   localStream: (stream: MediaStream) => void;
-  /** Stream remoto del otro peer. Conéctalo a un <video>. */
+  /** Stream de cámara remoto del otro peer. Conéctalo a un <video>. */
   remoteStream: (stream: MediaStream) => void;
+  /** El otro peer se fue: limpia sus vistas (evita frame congelado). */
+  remoteLeft: () => void;
+  /** Mi estado de compartir pantalla. `stream` es mi pantalla (para previsualizar). */
+  screenShare: (active: boolean, stream?: MediaStream) => void;
+  /** El otro peer comparte pantalla (`stream`) o dejó de hacerlo (`null`). */
+  remoteScreen: (stream: MediaStream | null) => void;
   /** Cambió el estado de la llamada. */
   stateChange: (state: CallState) => void;
-  /** Cambió el estado de compartir pantalla. */
-  screenShare: (active: boolean) => void;
   /** Error recuperable o fatal. */
   error: (error: Error) => void;
   /** Evento de auditoría (solo si `audit: true`). */

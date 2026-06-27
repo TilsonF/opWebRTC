@@ -43,11 +43,15 @@ export class Call extends EventEmitter<CallEvents> {
   private room = '';
   private resolvedIce: RTCIceServer[] = DEFAULT_ICE;
 
-  // Senders para reemplazar tracks (cambio de dispositivo / screenshare).
+  // Senders para reemplazar tracks (cambio de dispositivo / blur).
   private videoSender?: RTCRtpSender;
   private audioSender?: RTCRtpSender;
+  // Screenshare como track ADICIONAL (no reemplaza la cámara).
+  private screenSender?: RTCRtpSender;
   private screenStream?: MediaStream;
   private screenSharing = false;
+  // Id del stream de cámara remoto, para distinguirlo del de pantalla.
+  private remoteCameraStreamId?: string;
 
   // Estado de perfect negotiation.
   private polite = false;
@@ -134,28 +138,37 @@ export class Call extends EventEmitter<CallEvents> {
     this.audit('switch-microphone', { deviceId });
   }
 
-  /** Comparte la pantalla en lugar de la cámara. */
+  /**
+   * Comparte la pantalla como pista ADICIONAL: el peer remoto sigue viendo
+   * tu cámara y recibe además la pantalla. La pantalla va en su propio stream
+   * para que el otro extremo pueda distinguirla de la cámara.
+   */
   async startScreenShare(): Promise<void> {
-    if (this.screenSharing) return;
+    if (this.screenSharing || !this.pc) return;
     const screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
     this.screenStream = screen;
     const track = screen.getVideoTracks()[0]!;
-    await this.videoSender?.replaceTrack(track);
+    // addTrack en su propio stream -> nueva negociación -> el remoto lo recibe.
+    this.screenSender = this.pc.addTrack(track, screen);
     // Si el usuario detiene desde el diálogo nativo del navegador.
     track.onended = () => void this.stopScreenShare();
     this.screenSharing = true;
-    this.emit('screenShare', true);
+    this.signaling?.send({ type: 'screen', active: true });
+    this.emit('screenShare', true, screen);
     this.audit('screenshare-start');
   }
 
-  /** Vuelve a la cámara tras compartir pantalla. */
+  /** Deja de compartir pantalla (la cámara nunca se interrumpió). */
   async stopScreenShare(): Promise<void> {
     if (!this.screenSharing) return;
+    if (this.screenSender) {
+      this.pc?.removeTrack(this.screenSender);
+      this.screenSender = undefined;
+    }
     for (const t of this.screenStream?.getTracks() ?? []) t.stop();
     this.screenStream = undefined;
-    const camTrack = this.localStream?.getVideoTracks()[0];
-    if (camTrack) await this.videoSender?.replaceTrack(camTrack);
     this.screenSharing = false;
+    this.signaling?.send({ type: 'screen', active: false });
     this.emit('screenShare', false);
     this.audit('screenshare-stop');
   }
@@ -266,8 +279,13 @@ export class Call extends EventEmitter<CallEvents> {
         this.emit('error', new Error('Token de sala inválido o ausente'));
         this.setState('failed');
         break;
+      case 'screen':
+        // El remoto dejó de compartir: oculta su pantalla.
+        if (!msg.active) this.emit('remoteScreen', null);
+        break;
       case 'peer-left':
         this.audit('peer-left');
+        this.clearRemote();
         this.setState('disconnected');
         break;
       case 'signal':
@@ -286,8 +304,19 @@ export class Call extends EventEmitter<CallEvents> {
       else this.audioSender = sender;
     }
 
-    pc.ontrack = ({ track }) => {
-      this.remoteStream.addTrack(track);
+    pc.ontrack = (ev) => {
+      const stream = ev.streams[0];
+      // El primer stream remoto es la cámara; cualquier stream distinto que
+      // llegue después es la pantalla compartida.
+      if (stream && this.remoteCameraStreamId && stream.id !== this.remoteCameraStreamId) {
+        this.emit('remoteScreen', stream);
+        ev.track.onended = () => this.emit('remoteScreen', null);
+        ev.track.onmute = () => this.emit('remoteScreen', null);
+        this.audit('remote-screen-track');
+        return;
+      }
+      if (stream && !this.remoteCameraStreamId) this.remoteCameraStreamId = stream.id;
+      this.remoteStream.addTrack(ev.track);
       this.emit('remoteStream', this.remoteStream);
     };
 
@@ -328,6 +357,14 @@ export class Call extends EventEmitter<CallEvents> {
           break;
       }
     };
+  }
+
+  /** Limpia las vistas remotas cuando el otro peer se va (sin frame congelado). */
+  private clearRemote(): void {
+    for (const t of this.remoteStream.getTracks()) this.remoteStream.removeTrack(t);
+    this.remoteCameraStreamId = undefined;
+    this.emit('remoteScreen', null);
+    this.emit('remoteLeft');
   }
 
   /** Reconexión por ICE restart. Solo el peer impolite la inicia (evita doble). */

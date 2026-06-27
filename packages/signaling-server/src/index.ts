@@ -110,7 +110,7 @@ wss.on('connection', (socket) => {
       return;
     }
 
-    if (msg.type === 'signal') relay(peer, raw.toString());
+    if (msg.type === 'signal' || msg.type === 'screen') relay(peer, raw.toString());
   });
 
   socket.on('close', () => leaveRoom(peer));

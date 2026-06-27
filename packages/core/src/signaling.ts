@@ -8,6 +8,7 @@ export type SignalMessage =
   | { type: 'peer-left'; peerId: string }
   | { type: 'room-full' }
   | { type: 'unauthorized' }
+  | { type: 'screen'; active: boolean }
   | { type: 'signal'; data: RTCSessionDescriptionInit | RTCIceCandidateInit | null };
 
 interface SignalingEvents {
