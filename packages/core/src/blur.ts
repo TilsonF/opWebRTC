@@ -39,6 +39,9 @@ export class BackgroundBlur {
   private readonly maskCtx: CanvasRenderingContext2D;
   private running = false;
   private lastTs = 0;
+  private processing = false;
+  private processingStart = 0;
+  private lastDraw = 0;
   private readonly opts: Required<BlurOptions>;
 
   constructor(opts: BlurOptions = {}) {
@@ -88,6 +91,8 @@ export class BackgroundBlur {
   /** Detiene el procesamiento y libera el segmentador. */
   stop(): void {
     this.running = false;
+    this.processing = false;
+    this.lastTs = this.lastDraw = this.processingStart = 0;
     this.video.srcObject = null;
     this.segmenter?.close();
     this.segmenter = undefined;
@@ -95,24 +100,40 @@ export class BackgroundBlur {
 
   private readonly loop = (): void => {
     if (!this.running) return;
-    try {
-      if (this.video.readyState >= 2 && this.segmenter) {
-        // Timestamp estrictamente creciente (MediaPipe lo exige en modo VIDEO).
-        const ts = Math.max(performance.now(), this.lastTs + 1);
-        this.lastTs = ts;
-        this.segmenter.segmentForVideo(this.video, ts, (res) => {
-          try {
-            this.composite(res.categoryMask);
-          } finally {
-            res.categoryMask?.close();
-          }
-        });
-      }
-    } catch {
-      // Un frame fallido no debe matar el loop (antes congelaba el blur).
-    }
-    // Siempre se reprograma, pase lo que pase.
+    // Siempre se reprograma primero: pase lo que pase, el loop sobrevive.
     requestAnimationFrame(this.loop);
+
+    const now = performance.now();
+
+    // Throttle al fps objetivo (no saturar la GPU pidiendo más de lo que rinde).
+    if (now - this.lastDraw < 1000 / this.opts.fps) return;
+
+    // Re-entrancy guard: no lanzar otra segmentación si la anterior sigue.
+    // Watchdog: si quedó colgada >1s, la abandonamos para no congelar.
+    if (this.processing) {
+      if (now - this.processingStart > 1000) this.processing = false;
+      else return;
+    }
+    if (this.video.readyState < 2 || !this.segmenter) return;
+
+    this.lastDraw = now;
+    this.processing = true;
+    this.processingStart = now;
+    // Timestamp estrictamente creciente (MediaPipe lo exige en modo VIDEO).
+    const ts = Math.max(now, this.lastTs + 1);
+    this.lastTs = ts;
+    try {
+      this.segmenter.segmentForVideo(this.video, ts, (res) => {
+        try {
+          this.composite(res.categoryMask);
+        } finally {
+          res.categoryMask?.close();
+          this.processing = false;
+        }
+      });
+    } catch {
+      this.processing = false; // un frame fallido no debe matar el blur
+    }
   };
 
   /** Compone: persona nítida sobre fondo difuminado, usando la máscara. */
