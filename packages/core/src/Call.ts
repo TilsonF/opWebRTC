@@ -1,6 +1,12 @@
 import { EventEmitter } from 'eventemitter3';
 import { SignalingChannel, type SignalMessage } from './signaling.js';
-import type { CallConfig, CallEvents, CallState, CallStats } from './types.js';
+import type {
+  CallConfig,
+  CallEvents,
+  CallState,
+  CallStats,
+  DeviceList,
+} from './types.js';
 
 /** Constraints por defecto: HD 720p + audio limpio (eco/ruido cancelados). */
 const DEFAULT_MEDIA: MediaStreamConstraints = {
@@ -16,9 +22,7 @@ const DEFAULT_MEDIA: MediaStreamConstraints = {
   },
 };
 
-const DEFAULT_ICE: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-];
+const DEFAULT_ICE: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 /**
  * Una videollamada 1‑a‑1 P2P.
@@ -26,38 +30,50 @@ const DEFAULT_ICE: RTCIceServer[] = [
  * Headless por diseño: emite `MediaStream` y eventos, nunca toca el DOM.
  * El consumidor (React, Vue, vanilla...) conecta los streams a sus <video>.
  *
- * Usa el patrón "perfect negotiation" para manejar glare (ofertas simultáneas).
+ * Usa el patrón "perfect negotiation" para manejar glare (ofertas simultáneas)
+ * y `restartIce()` para reconectar ante caídas de red.
  */
 export class Call extends EventEmitter<CallEvents> {
-  private readonly config: Required<Pick<CallConfig, 'media' | 'iceServers'>> &
-    CallConfig;
+  private readonly config: CallConfig;
+  private readonly maxReconnect: number;
   private signaling?: SignalingChannel;
   private pc?: RTCPeerConnection;
   private localStream?: MediaStream;
   private readonly remoteStream = new MediaStream();
   private room = '';
+  private resolvedIce: RTCIceServer[] = DEFAULT_ICE;
+
+  // Senders para reemplazar tracks (cambio de dispositivo / screenshare).
+  private videoSender?: RTCRtpSender;
+  private audioSender?: RTCRtpSender;
+  private screenStream?: MediaStream;
+  private screenSharing = false;
 
   // Estado de perfect negotiation.
   private polite = false;
   private makingOffer = false;
   private ignoreOffer = false;
 
+  // Reconexión.
+  private reconnectAttempts = 0;
+
   private state: CallState = 'idle';
   private statsTimer?: ReturnType<typeof setInterval>;
-  private prevBytes = { in: 0, out: 0, ts: 0 };
 
   constructor(config: CallConfig) {
     super();
-    this.config = {
-      ...config,
-      media: config.media ?? DEFAULT_MEDIA,
-      iceServers: config.iceServers ?? DEFAULT_ICE,
-    };
+    this.config = config;
+    this.maxReconnect = config.maxReconnectAttempts ?? 5;
   }
 
   /** Estado actual de la llamada. */
   get currentState(): CallState {
     return this.state;
+  }
+
+  /** ¿Está compartiendo pantalla ahora mismo? */
+  get isScreenSharing(): boolean {
+    return this.screenSharing;
   }
 
   /** Adquiere cámara/mic y se une a la sala. */
@@ -69,12 +85,17 @@ export class Call extends EventEmitter<CallEvents> {
     this.setState('connecting');
 
     this.localStream = await navigator.mediaDevices.getUserMedia(
-      this.config.media,
+      this.config.media ?? DEFAULT_MEDIA,
     );
     this.emit('localStream', this.localStream);
     this.audit('media-acquired', {
       tracks: this.localStream.getTracks().map((t) => t.kind),
     });
+
+    // Resuelve credenciales ICE (TURN efímero si hay provider).
+    this.resolvedIce = this.config.iceServersProvider
+      ? await this.config.iceServersProvider()
+      : (this.config.iceServers ?? DEFAULT_ICE);
 
     this.setupSignaling();
   }
@@ -91,13 +112,71 @@ export class Call extends EventEmitter<CallEvents> {
     this.audit('mic-toggle', { on });
   }
 
+  /** Lista cámaras, micrófonos y altavoces disponibles. */
+  async getDevices(): Promise<DeviceList> {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return {
+      cameras: devices.filter((d) => d.kind === 'videoinput'),
+      microphones: devices.filter((d) => d.kind === 'audioinput'),
+      speakers: devices.filter((d) => d.kind === 'audiooutput'),
+    };
+  }
+
+  /** Cambia la cámara activa preservando el estado de mute. */
+  async switchCamera(deviceId: string): Promise<void> {
+    await this.replaceLocalTrack('video', { deviceId: { exact: deviceId } });
+    this.audit('switch-camera', { deviceId });
+  }
+
+  /** Cambia el micrófono activo preservando el estado de mute. */
+  async switchMicrophone(deviceId: string): Promise<void> {
+    await this.replaceLocalTrack('audio', { deviceId: { exact: deviceId } });
+    this.audit('switch-microphone', { deviceId });
+  }
+
+  /** Comparte la pantalla en lugar de la cámara. */
+  async startScreenShare(): Promise<void> {
+    if (this.screenSharing) return;
+    const screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    this.screenStream = screen;
+    const track = screen.getVideoTracks()[0]!;
+    await this.videoSender?.replaceTrack(track);
+    // Si el usuario detiene desde el diálogo nativo del navegador.
+    track.onended = () => void this.stopScreenShare();
+    this.screenSharing = true;
+    this.emit('screenShare', true);
+    this.audit('screenshare-start');
+  }
+
+  /** Vuelve a la cámara tras compartir pantalla. */
+  async stopScreenShare(): Promise<void> {
+    if (!this.screenSharing) return;
+    for (const t of this.screenStream?.getTracks() ?? []) t.stop();
+    this.screenStream = undefined;
+    const camTrack = this.localStream?.getVideoTracks()[0];
+    if (camTrack) await this.videoSender?.replaceTrack(camTrack);
+    this.screenSharing = false;
+    this.emit('screenShare', false);
+    this.audit('screenshare-stop');
+  }
+
+  /** Reemplaza el track de video saliente por uno procesado (p. ej. blur). */
+  async replaceOutgoingVideo(track: MediaStreamTrack): Promise<void> {
+    await this.videoSender?.replaceTrack(track);
+    this.audit('replace-video', { label: track.label });
+  }
+
   /** Métricas de calidad para tu UI o tu pipeline de auditoría. */
   async getStats(): Promise<CallStats> {
     const out: CallStats = {};
     if (!this.pc) return out;
     const report = await this.pc.getStats();
     report.forEach((s) => {
-      if (s.type === 'candidate-pair' && s.nominated && s.currentRoundTripTime != null) {
+      if (
+        s.type === 'candidate-pair' &&
+        s.nominated &&
+        s.currentRoundTripTime != null
+      ) {
         out.rtt = s.currentRoundTripTime * 1000;
       }
       if (s.type === 'inbound-rtp' && !s.isRemote) {
@@ -115,6 +194,7 @@ export class Call extends EventEmitter<CallEvents> {
     this.signaling?.send({ type: 'signal', data: null });
     this.signaling?.close();
     this.pc?.close();
+    for (const t of this.screenStream?.getTracks() ?? []) t.stop();
     for (const t of this.localStream?.getTracks() ?? []) t.stop();
     this.pc = undefined;
     this.localStream = undefined;
@@ -122,6 +202,40 @@ export class Call extends EventEmitter<CallEvents> {
   }
 
   // ── interno ────────────────────────────────────────────────────────────
+
+  /** Adquiere un nuevo track y lo intercambia en el sender y en localStream. */
+  private async replaceLocalTrack(
+    kind: 'video' | 'audio',
+    extra: MediaTrackConstraints,
+  ): Promise<void> {
+    const base =
+      kind === 'video'
+        ? (this.config.media?.video ?? DEFAULT_MEDIA.video)
+        : (this.config.media?.audio ?? DEFAULT_MEDIA.audio);
+    const constraints: MediaStreamConstraints = {
+      [kind]: { ...(typeof base === 'object' ? base : {}), ...extra },
+    };
+    const fresh = await navigator.mediaDevices.getUserMedia(constraints);
+    const newTrack = fresh.getTracks()[0]!;
+
+    const old =
+      kind === 'video'
+        ? this.localStream?.getVideoTracks()[0]
+        : this.localStream?.getAudioTracks()[0];
+    newTrack.enabled = old?.enabled ?? true;
+
+    const sender = kind === 'video' ? this.videoSender : this.audioSender;
+    if (!(kind === 'video' && this.screenSharing)) {
+      await sender?.replaceTrack(newTrack);
+    }
+
+    if (old) {
+      this.localStream?.removeTrack(old);
+      old.stop();
+    }
+    this.localStream?.addTrack(newTrack);
+    if (this.localStream) this.emit('localStream', this.localStream);
+  }
 
   private setupSignaling(): void {
     const ch = new SignalingChannel(this.config.signalingUrl);
@@ -137,13 +251,11 @@ export class Call extends EventEmitter<CallEvents> {
   private async onSignal(msg: SignalMessage): Promise<void> {
     switch (msg.type) {
       case 'joined':
-        // El servidor asigna roles: el "polite" cede ante glare.
         this.polite = msg.polite;
         this.audit('joined', { polite: msg.polite });
         this.createPeerConnection();
         break;
       case 'peer-joined':
-        // Hay alguien al otro lado: arrancamos negociación.
         this.audit('peer-joined');
         break;
       case 'room-full':
@@ -165,11 +277,13 @@ export class Call extends EventEmitter<CallEvents> {
   }
 
   private createPeerConnection(): void {
-    const pc = new RTCPeerConnection({ iceServers: this.config.iceServers });
+    const pc = new RTCPeerConnection({ iceServers: this.resolvedIce });
     this.pc = pc;
 
     for (const track of this.localStream?.getTracks() ?? []) {
-      pc.addTrack(track, this.localStream!);
+      const sender = pc.addTrack(track, this.localStream!);
+      if (track.kind === 'video') this.videoSender = sender;
+      else this.audioSender = sender;
     }
 
     pc.ontrack = ({ track }) => {
@@ -198,20 +312,35 @@ export class Call extends EventEmitter<CallEvents> {
     pc.onconnectionstatechange = () => {
       switch (pc.connectionState) {
         case 'connected':
+          this.reconnectAttempts = 0;
           this.setState('connected');
           this.startStatsLoop();
           break;
         case 'disconnected':
           this.setState('disconnected');
+          this.tryReconnect();
           break;
         case 'failed':
-          this.setState('failed');
+          this.tryReconnect();
           break;
         case 'closed':
           this.setState('closed');
           break;
       }
     };
+  }
+
+  /** Reconexión por ICE restart. Solo el peer impolite la inicia (evita doble). */
+  private tryReconnect(): void {
+    if (this.polite || !this.pc) return;
+    if (this.reconnectAttempts >= this.maxReconnect) {
+      this.setState('failed');
+      this.audit('reconnect-gaveup', { attempts: this.reconnectAttempts });
+      return;
+    }
+    this.reconnectAttempts++;
+    this.audit('ice-restart', { attempt: this.reconnectAttempts });
+    this.pc.restartIce();
   }
 
   /** Núcleo del patrón perfect negotiation. */

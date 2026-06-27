@@ -11,6 +11,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./blur": {
+      "types": "./dist/blur.d.ts",
+      "import": "./dist/blur.js",
+      "require": "./dist/blur.cjs"
     }
   },
   "files": [
@@ -32,7 +37,16 @@
   "dependencies": {
     "eventemitter3": "^5.0.1"
   },
+  "peerDependencies": {
+    "@mediapipe/tasks-vision": "^0.10.0"
+  },
+  "peerDependenciesMeta": {
+    "@mediapipe/tasks-vision": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@mediapipe/tasks-vision": "^0.10.18",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2"
   },

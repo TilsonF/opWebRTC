@@ -68,6 +68,50 @@ await call.hangup();
 
 El mismo `core` funciona en React, Vue o vanilla: solo emite `MediaStream` y eventos.
 
+### Funcionalidades del core
+
+```ts
+// Dispositivos
+const { cameras, microphones } = await call.getDevices();
+await call.switchCamera(cameras[1].deviceId);
+await call.switchMicrophone(microphones[0].deviceId);
+
+// Mute
+call.toggleCamera(false);
+call.toggleMic(false);
+
+// Compartir pantalla (revierte a cámara al terminar)
+await call.startScreenShare();
+await call.stopScreenShare();
+
+// TURN efímero: credenciales frescas por conexión
+new Call({ signalingUrl, iceServersProvider: async () =>
+  (await fetch('/ice').then(r => r.json())).iceServers });
+
+// Reconexión automática (ICE restart) — integrada, configurable
+new Call({ signalingUrl, maxReconnectAttempts: 5 });
+```
+
+### Blur de fondo (opt-in, carga diferida)
+
+Módulo aparte para no inflar el core; MediaPipe solo se descarga si lo usas:
+
+```ts
+import { BackgroundBlur } from '@opwebrtc/core/blur';
+
+const blur = new BackgroundBlur({ blurRadius: 12 });
+const blurred = await blur.process(cameraTrack);
+await call.replaceOutgoingVideo(blurred);
+// ...
+blur.stop();
+```
+
+### TURN / coturn
+
+`infra/` trae un `docker-compose.yml` + `turnserver.conf` listos. El
+signaling-server firma credenciales efímeras (HMAC) en `GET /ice` con el mismo
+`TURN_SECRET`. Ver `infra/` y `.env.example`.
+
 ## Seguridad
 
 - Media cifrada por defecto (DTLS‑SRTP) — propio de WebRTC.
@@ -94,11 +138,21 @@ cierra la conexión y el core emite un evento `error`. Ver
 
 ## Roadmap
 
+### Fase A — sobre P2P 1‑a‑1 (hecho)
+
 - [x] Auth por token en señalización (parametrizable, off por defecto)
-- [ ] WSS (TLS en señalización)
-- [ ] Emisión de credenciales TURN efímeras
-- [ ] Reconexión / ICE restart
-- [ ] Selección de dispositivos (cámara/mic) y control de calidad (códecs, bitrate)
+- [x] WSS (TLS en señalización, vía `TLS_CERT`/`TLS_KEY`)
+- [x] Credenciales TURN efímeras (`GET /ice` + coturn)
+- [x] Reconexión / ICE restart
+- [x] Selección de dispositivos (cámara/mic) en vivo
+- [x] Compartir pantalla
+- [x] Blur de fondo (módulo opt-in)
+- [x] Demo funcional estilo Jitsi (logo overlay, controles, stats)
+
+### Fase B — requiere SFU (multiparticipante)
+
 - [ ] Migración a SFU para llamadas grupales
+- [ ] Moderación: mute all, sacar participante (kick), rol admin
+- [ ] Control de calidad por capas (simulcast, bitrate)
 - [ ] Chat (data channel)
 ```

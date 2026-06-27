@@ -17,10 +17,18 @@ export interface CallConfig {
   /** URL del servidor de señalización (ws:// o wss://). */
   signalingUrl: string;
   /**
-   * Servidores ICE (STUN/TURN). Para producción usa siempre un TURN
+   * Servidores ICE (STUN/TURN) estáticos. Para producción usa siempre un TURN
    * con credenciales efímeras emitidas por tu backend.
    */
   iceServers?: RTCIceServer[];
+  /**
+   * Proveedor asíncrono de servidores ICE. Si se define, se llama justo antes
+   * de cada conexión para obtener credenciales TURN efímeras frescas.
+   * Tiene prioridad sobre `iceServers`.
+   */
+  iceServersProvider?: () => Promise<RTCIceServer[]>;
+  /** Máximo de reintentos de reconexión (ICE restart). Por defecto 5. */
+  maxReconnectAttempts?: number;
   /**
    * Constraints de getUserMedia. Aquí se personaliza cámara/mic, HD, etc.
    * Por defecto: video HD 720p + audio con cancelación de eco.
@@ -58,6 +66,13 @@ export interface CallStats {
   outboundKbps?: number;
 }
 
+/** Dispositivos de entrada/salida disponibles. */
+export interface DeviceList {
+  cameras: MediaDeviceInfo[];
+  microphones: MediaDeviceInfo[];
+  speakers: MediaDeviceInfo[];
+}
+
 /** Mapa de eventos que emite `Call`. El consumidor se suscribe con `.on(...)`. */
 export interface CallEvents {
   /** Stream local listo (tu cámara/mic). Conéctalo a un <video> muted. */
@@ -66,6 +81,8 @@ export interface CallEvents {
   remoteStream: (stream: MediaStream) => void;
   /** Cambió el estado de la llamada. */
   stateChange: (state: CallState) => void;
+  /** Cambió el estado de compartir pantalla. */
+  screenShare: (active: boolean) => void;
   /** Error recuperable o fatal. */
   error: (error: Error) => void;
   /** Evento de auditoría (solo si `audit: true`). */

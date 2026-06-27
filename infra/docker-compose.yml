@@ -1,0 +1,13 @@
+# coturn: servidor TURN/STUN para atravesar NAT y firewalls.
+# El signaling-server firma credenciales efímeras con el mismo TURN_SECRET.
+#
+#   1. Edita turnserver.conf: pon tu dominio/IP pública y un static-auth-secret.
+#   2. En signaling-server/.env: TURN_SECRET=<el mismo>  y  TURN_URLS=turn:tu-ip:3478
+#   3. docker compose -f infra/docker-compose.yml up -d
+services:
+  coturn:
+    image: coturn/coturn:4.6
+    network_mode: host # TURN necesita rango de puertos UDP; host simplifica
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    restart: unless-stopped

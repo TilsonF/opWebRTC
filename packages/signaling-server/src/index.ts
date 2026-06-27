@@ -1,26 +1,23 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { createServer as createHttp, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createHttps } from 'node:https';
 import { WebSocketServer, type WebSocket } from 'ws';
 
 /**
  * Servidor de señalización para videollamadas 1‑a‑1.
  *
  * Responsabilidades (NO toca la media):
- *  - Agrupa peers en salas (máx. 2).
- *  - Asigna el rol "polite" del patrón perfect negotiation.
- *  - Reenvía mensajes `signal` (SDP/ICE) al otro peer de la sala.
- *  - Registra auditoría de metadatos.
- *
- * Pendiente para producción: autenticación por token, WSS (TLS) y
- * emisión de credenciales TURN efímeras.
+ *  - Agrupa peers en salas (máx. 2) y asigna el rol "polite".
+ *  - Reenvía mensajes `signal` (SDP/ICE) al otro peer.
+ *  - Auth de sala opcional por token.
+ *  - Sirve GET /ice con credenciales TURN efímeras (HMAC coturn).
+ *  - Soporta WSS si se le pasan certificados TLS.
  */
 
 const PORT = Number(process.env.PORT ?? 8080);
 
-/**
- * Auth parametrizable. Desactivada por defecto (desarrollo local).
- * Para activarla:  AUTH_ENABLED=true AUTH_TOKEN=mi-secreto npm run dev:signaling
- * El cliente debe enviar el mismo token en `new Call({ token })`.
- */
+// ── Auth de sala (opcional) ────────────────────────────────────────────────
 const AUTH_ENABLED = (process.env.AUTH_ENABLED ?? 'false').toLowerCase() === 'true';
 const AUTH_TOKEN = process.env.AUTH_TOKEN ?? '';
 
@@ -29,26 +26,73 @@ function isAuthorized(token: unknown): boolean {
   return typeof token === 'string' && token.length > 0 && token === AUTH_TOKEN;
 }
 
+// ── TURN efímero (coturn REST: user = expiry:id, pass = HMAC-SHA1) ──────────
+const TURN_SECRET = process.env.TURN_SECRET ?? '';
+const TURN_URLS = (process.env.TURN_URLS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const TURN_TTL = Number(process.env.TURN_TTL ?? 3600);
+const STUN_URL = process.env.STUN_URL ?? 'stun:stun.l.google.com:19302';
+
+function iceServers(): RTCIceServerLike[] {
+  const servers: RTCIceServerLike[] = [{ urls: STUN_URL }];
+  if (TURN_SECRET && TURN_URLS.length) {
+    const expiry = Math.floor(Date.now() / 1000) + TURN_TTL;
+    const username = `${expiry}:opwebrtc`;
+    const credential = createHmac('sha1', TURN_SECRET).update(username).digest('base64');
+    servers.push({ urls: TURN_URLS, username, credential });
+  }
+  return servers;
+}
+
+interface RTCIceServerLike {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+// ── TLS opcional (WSS) ─────────────────────────────────────────────────────
+const TLS_CERT = process.env.TLS_CERT;
+const TLS_KEY = process.env.TLS_KEY;
+const useTls = Boolean(TLS_CERT && TLS_KEY);
+
+function handleHttp(req: IncomingMessage, res: ServerResponse): void {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  if (req.method === 'GET' && req.url?.startsWith('/ice')) {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ iceServers: iceServers() }));
+    return;
+  }
+  if (req.method === 'GET' && req.url === '/health') {
+    res.end('ok');
+    return;
+  }
+  res.statusCode = 404;
+  res.end('not found');
+}
+
+const server = useTls
+  ? createHttps({ cert: readFileSync(TLS_CERT!), key: readFileSync(TLS_KEY!) }, handleHttp)
+  : createHttp(handleHttp);
+
+// ── Señalización WebSocket ─────────────────────────────────────────────────
 interface Peer {
   id: string;
   socket: WebSocket;
   room: string;
 }
 
-/** room -> peers */
 const rooms = new Map<string, Peer[]>();
 
 function audit(event: string, data: Record<string, unknown>): void {
   console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...data }));
 }
 
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({ server });
 
 wss.on('connection', (socket) => {
   const peer: Peer = { id: randomUUID(), socket, room: '' };
 
   socket.on('message', (raw) => {
-    let msg: { type: string; room?: string; token?: unknown; data?: unknown };
+    let msg: { type: string; room?: string; token?: unknown };
     try {
       msg = JSON.parse(raw.toString());
     } catch {
@@ -66,9 +110,7 @@ wss.on('connection', (socket) => {
       return;
     }
 
-    if (msg.type === 'signal') {
-      relay(peer, raw.toString());
-    }
+    if (msg.type === 'signal') relay(peer, raw.toString());
   });
 
   socket.on('close', () => leaveRoom(peer));
@@ -86,11 +128,9 @@ function joinRoom(peer: Peer, room: string): void {
   members.push(peer);
   rooms.set(room, members);
 
-  // El primero en entrar es "polite": cederá ante una colisión de ofertas.
   const polite = members.length === 1;
   peer.socket.send(JSON.stringify({ type: 'joined', peerId: peer.id, polite }));
 
-  // Avisar al otro miembro que ya hay con quién negociar.
   for (const other of members) {
     if (other.id !== peer.id) {
       other.socket.send(JSON.stringify({ type: 'peer-joined', peerId: peer.id }));
@@ -121,5 +161,10 @@ function leaveRoom(peer: Peer): void {
   audit('leave', { room: peer.room, peer: peer.id });
 }
 
-console.log(`✅ Señalización opWebRTC escuchando en ws://localhost:${PORT}`);
-console.log(`   auth: ${AUTH_ENABLED ? 'ACTIVADA (token requerido)' : 'desactivada'}`);
+server.listen(PORT, () => {
+  const proto = useTls ? 'wss' : 'ws';
+  console.log(`✅ Señalización opWebRTC en ${proto}://localhost:${PORT}`);
+  console.log(`   auth: ${AUTH_ENABLED ? 'ACTIVADA (token requerido)' : 'desactivada'}`);
+  console.log(`   TURN: ${TURN_SECRET && TURN_URLS.length ? 'efímero activo' : 'solo STUN'}`);
+  console.log(`   ICE endpoint: ${useTls ? 'https' : 'http'}://localhost:${PORT}/ice`);
+});
