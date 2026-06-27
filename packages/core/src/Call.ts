@@ -126,7 +126,9 @@ export class Call extends EventEmitter<CallEvents> {
   private setupSignaling(): void {
     const ch = new SignalingChannel(this.config.signalingUrl);
     this.signaling = ch;
-    ch.on('open', () => ch.send({ type: 'join', room: this.room }));
+    ch.on('open', () =>
+      ch.send({ type: 'join', room: this.room, token: this.config.token }),
+    );
     ch.on('error', (e) => this.emit('error', e));
     ch.on('message', (m) => void this.onSignal(m));
     ch.connect();
@@ -146,6 +148,11 @@ export class Call extends EventEmitter<CallEvents> {
         break;
       case 'room-full':
         this.emit('error', new Error('La sala ya tiene dos participantes'));
+        break;
+      case 'unauthorized':
+        this.audit('unauthorized');
+        this.emit('error', new Error('Token de sala inválido o ausente'));
+        this.setState('failed');
         break;
       case 'peer-left':
         this.audit('peer-left');

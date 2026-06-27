@@ -16,6 +16,19 @@ import { WebSocketServer, type WebSocket } from 'ws';
 
 const PORT = Number(process.env.PORT ?? 8080);
 
+/**
+ * Auth parametrizable. Desactivada por defecto (desarrollo local).
+ * Para activarla:  AUTH_ENABLED=true AUTH_TOKEN=mi-secreto npm run dev:signaling
+ * El cliente debe enviar el mismo token en `new Call({ token })`.
+ */
+const AUTH_ENABLED = (process.env.AUTH_ENABLED ?? 'false').toLowerCase() === 'true';
+const AUTH_TOKEN = process.env.AUTH_TOKEN ?? '';
+
+function isAuthorized(token: unknown): boolean {
+  if (!AUTH_ENABLED) return true;
+  return typeof token === 'string' && token.length > 0 && token === AUTH_TOKEN;
+}
+
 interface Peer {
   id: string;
   socket: WebSocket;
@@ -35,7 +48,7 @@ wss.on('connection', (socket) => {
   const peer: Peer = { id: randomUUID(), socket, room: '' };
 
   socket.on('message', (raw) => {
-    let msg: { type: string; room?: string; data?: unknown };
+    let msg: { type: string; room?: string; token?: unknown; data?: unknown };
     try {
       msg = JSON.parse(raw.toString());
     } catch {
@@ -43,6 +56,12 @@ wss.on('connection', (socket) => {
     }
 
     if (msg.type === 'join' && msg.room) {
+      if (!isAuthorized(msg.token)) {
+        peer.socket.send(JSON.stringify({ type: 'unauthorized' }));
+        audit('unauthorized', { room: msg.room, peer: peer.id });
+        peer.socket.close();
+        return;
+      }
       joinRoom(peer, msg.room);
       return;
     }
@@ -103,3 +122,4 @@ function leaveRoom(peer: Peer): void {
 }
 
 console.log(`✅ Señalización opWebRTC escuchando en ws://localhost:${PORT}`);
+console.log(`   auth: ${AUTH_ENABLED ? 'ACTIVADA (token requerido)' : 'desactivada'}`);

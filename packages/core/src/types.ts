@@ -28,6 +28,11 @@ export interface CallConfig {
   media?: MediaStreamConstraints;
   /** Emite eventos `audit` con metadatos de la sesión (no contenido). */
   audit?: boolean;
+  /**
+   * Token de autenticación de sala. Solo se envía si está definido.
+   * El servidor lo valida únicamente si tiene auth habilitada (AUTH_ENABLED).
+   */
+  token?: string;
 }
 
 /** Evento de auditoría: solo metadatos, nunca media. */

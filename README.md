@@ -74,9 +74,28 @@ El mismo `core` funciona en React, Vue o vanilla: solo emite `MediaStream` y eve
 - En producción: **WSS** (TLS en señalización), autenticación por token de sala,
   y **credenciales TURN efímeras** emitidas por el backend (nunca fijas en el front).
 
+### Auth de sala (parametrizable)
+
+Desactivada por defecto. Para exigir token, arranca el servidor con:
+
+```bash
+AUTH_ENABLED=true AUTH_TOKEN=mi-secreto npm run dev:signaling
+```
+
+Y pásalo en el cliente:
+
+```ts
+new Call({ signalingUrl, token: 'mi-secreto' });
+```
+
+Si está activada y el token no coincide, el servidor responde `unauthorized`,
+cierra la conexión y el core emite un evento `error`. Ver
+`packages/signaling-server/.env.example`.
+
 ## Roadmap
 
-- [ ] Auth por token en señalización + WSS
+- [x] Auth por token en señalización (parametrizable, off por defecto)
+- [ ] WSS (TLS en señalización)
 - [ ] Emisión de credenciales TURN efímeras
 - [ ] Reconexión / ICE restart
 - [ ] Selección de dispositivos (cámara/mic) y control de calidad (códecs, bitrate)
