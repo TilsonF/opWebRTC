@@ -5,13 +5,15 @@
   "description": "Librería WebRTC agnóstica a frameworks para videollamadas personalizables, seguras y ligeras",
   "workspaces": [
     "packages/*",
-    "demo"
+    "demo",
+    "e2e"
   ],
   "scripts": {
     "build": "npm run build -w @opwebrtc/core",
     "dev:core": "npm run dev -w @opwebrtc/core",
     "dev:signaling": "npm run dev -w @opwebrtc/signaling-server",
-    "dev:demo": "npm run dev -w demo"
+    "dev:demo": "npm run dev -w demo",
+    "test:e2e": "npm run test -w @opwebrtc/e2e"
   },
   "license": "MIT"
 }

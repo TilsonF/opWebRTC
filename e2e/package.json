@@ -1,0 +1,15 @@
+{
+  "name": "@opwebrtc/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tests end-to-end con Playwright (navegador real + dispositivos de media falsos).",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1"
+  }
+}
