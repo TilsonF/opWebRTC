@@ -1,0 +1,22 @@
+{
+  "name": "@opwebrtc/signaling-server",
+  "version": "0.1.0",
+  "description": "Servidor de señalización WebSocket: relay de SDP/ICE, salas 1-a-1, auth y auditoría.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "license": "MIT"
+}

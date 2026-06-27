@@ -1,0 +1,40 @@
+{
+  "name": "@opwebrtc/core",
+  "version": "0.1.0",
+  "description": "Núcleo WebRTC agnóstico a frameworks: lógica de videollamada P2P, eventos y auditoría. Sin UI.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "webrtc",
+    "video",
+    "p2p",
+    "videollamada",
+    "framework-agnostic"
+  ],
+  "dependencies": {
+    "eventemitter3": "^5.0.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "license": "MIT"
+}
