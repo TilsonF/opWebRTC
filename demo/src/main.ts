@@ -22,10 +22,15 @@ let camOn = true;
 let micOn = true;
 let localShare = false;
 let remoteShare = false;
+let hasRemote = false;
 
 // Layout estilo Meet: si alguien comparte, pantalla grande + participantes a la derecha.
 function updateStage(): void {
   stage.classList.toggle('sharing', localShare || remoteShare);
+  // has-remote controla que el tile del otro participante exista o no.
+  stage.classList.toggle('has-remote', hasRemote);
+  // El placeholder solo cuando no hay remoto y no estoy presentando.
+  placeholder.classList.toggle('hidden', hasRemote || localShare);
 }
 
 const SIGNALING = `ws://${location.hostname}:8080`;
@@ -86,13 +91,14 @@ $('join').onclick = async () => {
   });
   call.on('remoteStream', (s) => {
     remoteVideo.srcObject = s;
-    placeholder.classList.add('hidden');
+    hasRemote = true;
+    updateStage();
   });
-  // El otro se fue: limpiar su vista (sin frame congelado).
+  // El otro se fue: limpiar su vista y quitar su tile (sin frame congelado).
   call.on('remoteLeft', () => {
     remoteVideo.srcObject = null;
+    hasRemote = false;
     remoteShare = false;
-    placeholder.classList.remove('hidden');
     updateStage();
   });
   // Yo comparto pantalla: previsualizo mi propia pantalla como vista principal.
@@ -183,11 +189,10 @@ $('hangup').onclick = async () => {
   blur?.stop();
   await call?.hangup();
   call = undefined;
-  blurOn = localShare = remoteShare = false;
+  blurOn = localShare = remoteShare = hasRemote = false;
   updateStage();
   callView.classList.add('hidden');
   prejoin.classList.remove('hidden');
-  placeholder.classList.remove('hidden');
   localVideo.srcObject = remoteVideo.srcObject = screenView.srcObject = null;
 };
 

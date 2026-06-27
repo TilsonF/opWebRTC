@@ -36,3 +36,30 @@ test('cuando el otro peer se va, su vista se limpia', async ({ browser }) => {
 
   await ctxB.close();
 });
+
+test('al salir un participante en modo compartir, su tile desaparece', async ({ browser }) => {
+  const room = `e2e-leave-share-${Date.now()}`;
+  const ctxA = await browser.newContext({ permissions: ['camera', 'microphone'] });
+  const ctxB = await browser.newContext({ permissions: ['camera', 'microphone'] });
+  const a = await ctxA.newPage();
+  const b = await ctxB.newPage();
+
+  await enter(a, room);
+  await enter(b, room);
+  await expect(a.locator('#state')).toHaveText('connected', { timeout: 25_000 });
+  await expect(b.locator('#state')).toHaveText('connected', { timeout: 25_000 });
+
+  // A comparte: el tile del participante (B) es visible en la columna derecha.
+  await a.click('#screen');
+  await expect(a.locator('#stage')).toHaveClass(/sharing/);
+  await expect(a.locator('#remote')).toBeVisible();
+
+  // B se va mientras A sigue presentando.
+  await ctxB.close();
+
+  // El tile de B desaparece, pero A sigue en modo presentación.
+  await expect(a.locator('#remote')).toBeHidden({ timeout: 10_000 });
+  await expect(a.locator('#stage')).toHaveClass(/sharing/);
+
+  await ctxA.close();
+});
