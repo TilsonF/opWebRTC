@@ -40,7 +40,7 @@ export class BackgroundBlur {
   private readonly mask = document.createElement('canvas');
   private readonly ctx: CanvasRenderingContext2D;
   private readonly maskCtx: CanvasRenderingContext2D;
-  private outTrack?: CanvasCaptureMediaStreamTrack;
+  private outTrack?: MediaStreamTrack;
 
   private running = false;
   private hasMask = false;
@@ -92,10 +92,11 @@ export class BackgroundBlur {
     this.canvas.height = height;
 
     this.running = true;
-    // captureStream(0): entregamos cada frame manualmente con requestFrame(),
-    // garantizando que la salida no se quede sin frames (no se congela).
-    const stream = this.canvas.captureStream(0);
-    this.outTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+    // captureStream con tasa automática (30fps): el navegador muestrea el canvas
+    // de forma continua y alimenta el encoder de WebRTC sin pausas. (captureStream(0)
+    // + requestFrame congelaba al remoto: el encoder solo recibía el primer frame).
+    const stream = this.canvas.captureStream(30);
+    this.outTrack = stream.getVideoTracks()[0]!;
     requestAnimationFrame(this.render);
     return this.outTrack;
   }
@@ -123,7 +124,6 @@ export class BackgroundBlur {
     } catch {
       // un frame fallido no debe matar el render
     }
-    this.outTrack?.requestFrame();
     this.maybeSegment();
   };
 
