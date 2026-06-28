@@ -57,6 +57,8 @@ export class Call extends EventEmitter<CallEvents> {
   private polite = false;
   private makingOffer = false;
   private ignoreOffer = false;
+  // Moderación: el creador de la sala es admin.
+  private admin = false;
 
   // Reconexión.
   private reconnectAttempts = 0;
@@ -78,6 +80,18 @@ export class Call extends EventEmitter<CallEvents> {
   /** ¿Está compartiendo pantalla ahora mismo? */
   get isScreenSharing(): boolean {
     return this.screenSharing;
+  }
+
+  /** ¿Soy el admin/moderador de la sala (su creador)? */
+  get isAdmin(): boolean {
+    return this.admin;
+  }
+
+  /** Expulsa al otro participante de la sala. Solo el admin puede. */
+  kickParticipant(): void {
+    if (!this.admin) return;
+    this.audit('kick');
+    this.signaling?.send({ type: 'kick' });
   }
 
   /** Adquiere cámara/mic y se une a la sala. */
@@ -265,8 +279,14 @@ export class Call extends EventEmitter<CallEvents> {
     switch (msg.type) {
       case 'joined':
         this.polite = msg.polite;
-        this.audit('joined', { polite: msg.polite });
+        this.admin = msg.admin;
+        this.audit('joined', { polite: msg.polite, admin: msg.admin });
         this.createPeerConnection();
+        break;
+      case 'kicked':
+        this.audit('kicked');
+        this.emit('kicked');
+        void this.hangup();
         break;
       case 'peer-joined':
         this.audit('peer-joined');

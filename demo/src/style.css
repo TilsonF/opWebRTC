@@ -66,6 +66,7 @@ button.primary:hover { filter: brightness(1.1); }
   padding: 0.2rem 0.6rem; border-radius: 999px;
 }
 .badge.stats { font-variant: normal; font-family: ui-monospace, monospace; }
+.badge.admin { background: rgba(210, 153, 34, 0.18); border-color: #d29922; color: #e3b341; }
 
 .stage { position: relative; flex: 1; background: #000; overflow: hidden; }
 

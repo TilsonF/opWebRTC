@@ -81,6 +81,8 @@ export interface CallEvents {
   remoteStream: (stream: MediaStream) => void;
   /** El otro peer se fue: limpia sus vistas (evita frame congelado). */
   remoteLeft: () => void;
+  /** Fuiste expulsado por el admin de la sala. */
+  kicked: () => void;
   /** Mi estado de compartir pantalla. `stream` es mi pantalla (para previsualizar). */
   screenShare: (active: boolean, stream?: MediaStream) => void;
   /** El otro peer comparte pantalla (`stream`) o dejó de hacerlo (`null`). */

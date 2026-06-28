@@ -13,6 +13,8 @@ const stage = $('stage');
 const placeholder = $('placeholder');
 const stateBadge = $('state');
 const statsBadge = $('stats');
+const kickBtn = $('kick');
+const adminBadge = $('admin-badge');
 
 let call: Call | undefined;
 let blur: BackgroundBlur | undefined;
@@ -92,6 +94,8 @@ $('join').onclick = async () => {
   call.on('remoteStream', (s) => {
     remoteVideo.srcObject = s;
     hasRemote = true;
+    // El admin puede expulsar mientras haya alguien a quien expulsar.
+    kickBtn.classList.toggle('hidden', !call!.isAdmin);
     updateStage();
   });
   // El otro se fue: limpiar su vista y quitar su tile (sin frame congelado).
@@ -99,7 +103,14 @@ $('join').onclick = async () => {
     remoteVideo.srcObject = null;
     hasRemote = false;
     remoteShare = false;
+    kickBtn.classList.add('hidden');
     updateStage();
+  });
+  // Me expulsaron: el core ya colgó; solo reseteo la UI y aviso.
+  call.on('kicked', () => {
+    blur?.stop();
+    resetToPrejoin();
+    setTimeout(() => alert('El administrador te sacó de la sala.'), 50);
   });
   // Yo comparto pantalla: previsualizo mi propia pantalla como vista principal.
   call.on('screenShare', (active, s) => {
@@ -119,7 +130,11 @@ $('join').onclick = async () => {
     stateBadge.style.color = s === 'connected' ? '#3fb950' : s === 'failed' ? '#f85149' : '';
   });
   call.on('error', (e) => console.error('[opWebRTC]', e.message));
-  call.on('audit', (e) => console.debug('[audit]', e.type, e.data ?? ''));
+  call.on('audit', (e) => {
+    console.debug('[audit]', e.type, e.data ?? '');
+    // Al unirse ya sabemos si somos admin (lo trae el mensaje 'joined').
+    if (e.type === 'joined') adminBadge.classList.toggle('hidden', !call!.isAdmin);
+  });
 
   await call.join(room);
 
@@ -185,15 +200,23 @@ $('blur').onclick = async () => {
   }
 };
 
-$('hangup').onclick = async () => {
-  blur?.stop();
-  await call?.hangup();
-  call = undefined;
+kickBtn.onclick = () => call?.kickParticipant();
+
+function resetToPrejoin(): void {
   blurOn = localShare = remoteShare = hasRemote = false;
   updateStage();
+  kickBtn.classList.add('hidden');
+  adminBadge.classList.add('hidden');
   callView.classList.add('hidden');
   prejoin.classList.remove('hidden');
   localVideo.srcObject = remoteVideo.srcObject = screenView.srcObject = null;
+  call = undefined;
+}
+
+$('hangup').onclick = async () => {
+  blur?.stop();
+  await call?.hangup();
+  resetToPrejoin();
 };
 
 // ── Stats en vivo ─────────────────────────────────────────────────────────────

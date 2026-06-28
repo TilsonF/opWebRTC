@@ -78,6 +78,7 @@ interface Peer {
   id: string;
   socket: WebSocket;
   room: string;
+  isAdmin: boolean;
 }
 
 const rooms = new Map<string, Peer[]>();
@@ -89,7 +90,7 @@ function audit(event: string, data: Record<string, unknown>): void {
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (socket) => {
-  const peer: Peer = { id: randomUUID(), socket, room: '' };
+  const peer: Peer = { id: randomUUID(), socket, room: '', isAdmin: false };
 
   socket.on('message', (raw) => {
     let msg: { type: string; room?: string; token?: unknown };
@@ -111,6 +112,7 @@ wss.on('connection', (socket) => {
     }
 
     if (msg.type === 'signal' || msg.type === 'screen') relay(peer, raw.toString());
+    if (msg.type === 'kick') kick(peer);
   });
 
   socket.on('close', () => leaveRoom(peer));
@@ -125,18 +127,22 @@ function joinRoom(peer: Peer, room: string): void {
   }
 
   peer.room = room;
+  // El primero en entrar es polite (perfect negotiation) y admin (moderador).
+  const isFirst = members.length === 0;
+  peer.isAdmin = isFirst;
   members.push(peer);
   rooms.set(room, members);
 
-  const polite = members.length === 1;
-  peer.socket.send(JSON.stringify({ type: 'joined', peerId: peer.id, polite }));
+  peer.socket.send(
+    JSON.stringify({ type: 'joined', peerId: peer.id, polite: isFirst, admin: isFirst }),
+  );
 
   for (const other of members) {
     if (other.id !== peer.id) {
       other.socket.send(JSON.stringify({ type: 'peer-joined', peerId: peer.id }));
     }
   }
-  audit('join', { room, peer: peer.id, polite, size: members.length });
+  audit('join', { room, peer: peer.id, admin: isFirst, size: members.length });
 }
 
 function relay(from: Peer, rawJson: string): void {
@@ -144,6 +150,18 @@ function relay(from: Peer, rawJson: string): void {
   for (const other of members) {
     if (other.id !== from.id) other.socket.send(rawJson);
   }
+}
+
+function kick(admin: Peer): void {
+  if (!admin.isAdmin) return;
+  const members = rooms.get(admin.room) ?? [];
+  for (const other of members) {
+    if (other.id !== admin.id) {
+      other.socket.send(JSON.stringify({ type: 'kicked' }));
+      other.socket.close();
+    }
+  }
+  audit('kick', { room: admin.room, by: admin.id });
 }
 
 function leaveRoom(peer: Peer): void {
