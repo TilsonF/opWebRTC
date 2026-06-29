@@ -75,6 +75,7 @@
         </button>
         <button id="chat-toggle" class="ctrl" title="Chat" aria-label="Chat">
           <svg class="ic" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+          <span id="chat-unread" class="unread hidden">0</span>
         </button>
 
         <span class="divider"></span>
@@ -98,6 +99,8 @@
         </button>
       </footer>
     </section>
+
+    <div id="toast" class="toast hidden"></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

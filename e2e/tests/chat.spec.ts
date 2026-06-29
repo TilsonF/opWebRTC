@@ -44,3 +44,32 @@ test('los mensajes de chat llegan por el data channel', async ({ browser }) => {
   await ctxA.close();
   await ctxB.close();
 });
+
+test('avisa con badge de no leídos si el chat está cerrado', async ({ browser }) => {
+  const room = `e2e-chat-unread-${Date.now()}`;
+  const ctxA = await browser.newContext({ permissions: ['camera', 'microphone'] });
+  const ctxB = await browser.newContext({ permissions: ['camera', 'microphone'] });
+  const a = await ctxA.newPage();
+  const b = await ctxB.newPage();
+
+  await enter(a, room);
+  await enter(b, room);
+  await expect(a.locator('#state')).toHaveText('connected', { timeout: 25_000 });
+  await expect(b.locator('#state')).toHaveText('connected', { timeout: 25_000 });
+
+  // B NO abre el chat. A abre y envía.
+  await a.click('#chat-toggle');
+  await a.fill('#chat-text', 'mira esto');
+  await a.click('#chat-form button[type=submit]');
+
+  // B ve el badge de no leídos sin haber abierto el chat.
+  await expect(b.locator('#chat-unread')).toBeVisible({ timeout: 10_000 });
+  await expect(b.locator('#chat-unread')).toHaveText('1');
+
+  // Al abrir el chat, el badge desaparece.
+  await b.click('#chat-toggle');
+  await expect(b.locator('#chat-unread')).toBeHidden();
+
+  await ctxA.close();
+  await ctxB.close();
+});

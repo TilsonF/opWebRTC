@@ -110,13 +110,17 @@ $('join').onclick = async () => {
     kickBtn.classList.add('hidden');
     updateStage();
   });
-  // Me expulsaron: el core ya colgó; solo reseteo la UI y aviso.
+  // Me expulsaron: el core ya colgó; reseteo la UI y aviso con un toast visible.
   call.on('kicked', () => {
     blur?.stop();
     resetToPrejoin();
-    setTimeout(() => alert('El administrador te sacó de la sala.'), 50);
+    showToast('El administrador te sacó de la sala.');
   });
-  call.on('chatMessage', (text) => appendMsg('them', text));
+  call.on('chatMessage', (text) => {
+    appendMsg('them', text);
+    // Si el panel está cerrado, avisa con el badge de no leídos.
+    if ($('chat').classList.contains('hidden')) bumpUnread();
+  });
   // Yo comparto pantalla: previsualizo mi propia pantalla como vista principal.
   call.on('screenShare', (active, s) => {
     localShare = active;
@@ -205,7 +209,20 @@ $('blur').onclick = async () => {
   }
 };
 
-kickBtn.onclick = () => call?.kickParticipant();
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+function showToast(msg: string): void {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 4000);
+}
+
+kickBtn.onclick = () => {
+  if (!call?.isAdmin || !hasRemote) return;
+  call.kickParticipant();
+  showToast('Sacaste al participante de la sala.');
+};
 
 // ── Chat ──
 function appendMsg(kind: 'me' | 'them', text: string): void {
@@ -216,9 +233,22 @@ function appendMsg(kind: 'me' | 'them', text: string): void {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
+let unread = 0;
+function bumpUnread(): void {
+  unread++;
+  const badge = $('chat-unread');
+  badge.textContent = String(unread);
+  badge.classList.remove('hidden');
+}
+function clearUnread(): void {
+  unread = 0;
+  $('chat-unread').classList.add('hidden');
+}
+
 chatToggle.onclick = () => {
   const shown = !$('chat').classList.toggle('hidden');
   chatToggle.classList.toggle('active', shown);
+  if (shown) clearUnread(); // al abrir, ya están "leídos"
 };
 
 $<HTMLFormElement>('chat-form').onsubmit = (e) => {
@@ -239,6 +269,7 @@ function resetToPrejoin(): void {
   chatLog.innerHTML = '';
   $('chat').classList.add('hidden');
   chatToggle.classList.remove('active');
+  clearUnread();
   callView.classList.add('hidden');
   prejoin.classList.remove('hidden');
   localVideo.srcObject = remoteVideo.srcObject = screenView.srcObject = null;

@@ -132,11 +132,24 @@ button.primary:hover { filter: brightness(1.1); }
 }
 
 .ctrl {
+  position: relative;
   width: 50px; height: 50px; padding: 0; border-radius: 14px;
   display: grid; place-items: center;
   background: #232a33; border: 1px solid transparent; color: var(--text);
   transition: background 0.15s ease, transform 0.12s ease, color 0.15s ease;
 }
+
+/* Badge de mensajes no leídos */
+.unread {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 19px; height: 19px; padding: 0 5px;
+  background: var(--danger); color: #fff;
+  border-radius: 999px; font-size: 0.7rem; font-weight: 700;
+  display: grid; place-items: center; line-height: 1;
+  border: 2px solid var(--bg);
+  animation: unread-pop 1.2s ease-in-out infinite;
+}
+@keyframes unread-pop { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
 .ctrl:hover { background: #2d3640; transform: translateY(-2px); }
 .ctrl:active { transform: translateY(0); }
 .ctrl .ic { width: 22px; height: 22px; fill: none; stroke: currentColor;
@@ -194,3 +207,13 @@ button.primary:hover { filter: brightness(1.1); }
 }
 .chat-input button .ic { width: 18px; height: 18px; fill: none; stroke: currentColor;
   stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── Toast (avisos en pantalla) ── */
+.toast {
+  position: fixed; bottom: 92px; left: 50%; transform: translateX(-50%);
+  background: #21262d; border: 1px solid var(--border); color: var(--text);
+  padding: 0.7rem 1.1rem; border-radius: 12px; font-size: 0.9rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); z-index: 50; max-width: 90vw;
+  animation: toast-in 0.2s ease;
+}
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
