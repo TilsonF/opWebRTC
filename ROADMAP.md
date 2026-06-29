@@ -23,13 +23,14 @@
 - Blur se congela en la vista remota → vía: WebCodecs / insertable streams
 
 ## 🔵 En curso / próximo (sobre P2P)
+- [x] Adaptadores de framework:
+  - [x] `@opwebrtc/react` (hook `useCall`)
+  - [x] `@opwebrtc/vue` (composable `useCall`)
+  - [x] `@opwebrtc/angular` (servicio `CallService`)
+- [ ] Publicar `@opwebrtc/signaling-server` a npm
+- [ ] Publicar los adaptadores a npm
 - [ ] Reconexión: test e2e (simular caída de red)
 - [ ] coturn real: docker-compose + prueba de relay end-to-end
-- [ ] Publicar `@opwebrtc/signaling-server` a npm
-- [ ] Adaptadores de framework:
-  - [ ] `@opwebrtc/react` (hook `useCall`)
-  - [ ] `@opwebrtc/vue` (composable `useCall`)
-  - [ ] `@opwebrtc/angular` (servicio `CallService`)
 - [ ] Grabación — **mantener en roadmap** (MVP `MediaRecorder` cliente + consentimiento; producción: SFU egress)
 - [ ] Sitio de docs (GitHub Pages + VitePress/Starlight)
 

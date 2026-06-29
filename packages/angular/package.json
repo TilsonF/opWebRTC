@@ -1,0 +1,47 @@
+{
+  "name": "@opwebrtc/angular",
+  "version": "0.1.0",
+  "description": "Servicio Angular (CallService) para @opwebrtc/core: videollamada P2P con observables.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "author": "Tilson Fernandez <fernandeztilson@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TilsonF/opWebRTC.git",
+    "directory": "packages/angular"
+  },
+  "homepage": "https://github.com/TilsonF/opWebRTC#readme",
+  "bugs": "https://github.com/TilsonF/opWebRTC/issues",
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["webrtc", "angular", "service", "videollamada", "p2p"],
+  "peerDependencies": {
+    "@angular/core": ">=16",
+    "@opwebrtc/core": "^0.1.0",
+    "rxjs": ">=7"
+  },
+  "devDependencies": {
+    "@angular/core": "^18.2.0",
+    "@opwebrtc/core": "*",
+    "rxjs": "^7.8.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "zone.js": "~0.14.10"
+  },
+  "license": "MIT"
+}
