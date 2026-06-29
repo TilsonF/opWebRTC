@@ -22,10 +22,22 @@
     "dist"
   ],
   "sideEffects": false,
+  "author": "Tilson Fernandez <fernandeztilson@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TilsonF/opWebRTC.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/TilsonF/opWebRTC#readme",
+  "bugs": "https://github.com/TilsonF/opWebRTC/issues",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "tsup"
   },
   "keywords": [
     "webrtc",

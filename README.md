@@ -1,6 +1,8 @@
 # opWebRTC
 
-Librería **WebRTC agnóstica a frameworks** (TS/JS) para videollamadas personalizables, seguras y ligeras. Versión inicial: **1‑a‑1, solo video + audio** (sin chat), con cámara y micrófono.
+[![CI](https://github.com/TilsonF/opWebRTC/actions/workflows/ci.yml/badge.svg)](https://github.com/TilsonF/opWebRTC/actions/workflows/ci.yml)
+
+Librería **WebRTC agnóstica a frameworks** (TS/JS) para videollamadas personalizables, seguras y ligeras. P2P 1‑a‑1 con cámara, micrófono, compartir pantalla, blur de fondo, moderación y chat.
 
 ## Estructura (monorepo)
 
@@ -148,11 +150,17 @@ cierra la conexión y el core emite un evento `error`. Ver
 - [x] Compartir pantalla
 - [x] Blur de fondo (módulo opt-in)
 - [x] Demo funcional estilo Jitsi (logo overlay, controles, stats)
+- [x] Moderación P2P: rol admin + sacar participante (kick)
+- [x] Chat de texto por data channel
+- [x] CI (GitHub Actions) con 12 tests e2e Playwright
 
 ### Fase B — requiere SFU (multiparticipante)
 
 - [ ] Migración a SFU para llamadas grupales
-- [ ] Moderación: mute all, sacar participante (kick), rol admin
+- [ ] Moderación grupal: mute all (silenciar a todos)
 - [ ] Control de calidad por capas (simulcast, bitrate)
-- [ ] Chat (data channel)
+
+### Pendientes / bugs abiertos
+
+- [ ] Blur: se congela en la vista del peer remoto (local fluido) — investigar vía WebCodecs/insertable streams
 ```
