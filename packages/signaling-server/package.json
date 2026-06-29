@@ -1,20 +1,37 @@
 {
   "name": "@opwebrtc/signaling-server",
   "version": "0.1.0",
-  "description": "Servidor de señalización WebSocket: relay de SDP/ICE, salas 1-a-1, auth y auditoría.",
+  "description": "Servidor de señalización WebSocket para @opwebrtc/core: relay SDP/ICE, salas 1-a-1, sala de espera, auth, TURN efímero y WSS.",
   "type": "module",
-  "main": "src/index.ts",
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+  "main": "./dist/index.js",
+  "bin": {
+    "opwebrtc-signaling": "./dist/index.js"
   },
+  "files": ["dist", "opwebrtc.config.example.json", ".env.example"],
+  "author": "Tilson Fernandez <fernandeztilson@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TilsonF/opWebRTC.git",
+    "directory": "packages/signaling-server"
+  },
+  "homepage": "https://github.com/TilsonF/opWebRTC#readme",
+  "bugs": "https://github.com/TilsonF/opWebRTC/issues",
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "tsup"
+  },
+  "keywords": ["webrtc", "signaling", "websocket", "turn", "p2p"],
   "dependencies": {
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/ws": "^8.5.13",
+    "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
