@@ -41,6 +41,18 @@ export interface CallConfig {
    * El servidor lo valida únicamente si tiene auth habilitada (AUTH_ENABLED).
    */
   token?: string;
+  /** Nombre visible del participante (para identificarse / sala de espera). */
+  displayName?: string;
+  /**
+   * Si el creador de la sala lo activa, el segundo participante queda en
+   * espera hasta que el admin lo admita (sala de espera, útil en telemedicina).
+   */
+  requireApproval?: boolean;
+  /**
+   * Política de transporte ICE. 'relay' fuerza el uso del TURN (oculta las IPs
+   * de ambos peers; toda la media pasa por el TURN, sigue cifrada E2E).
+   */
+  iceTransportPolicy?: RTCIceTransportPolicy;
 }
 
 /** Evento de auditoría: solo metadatos, nunca media. */
@@ -85,6 +97,12 @@ export interface CallEvents {
   kicked: () => void;
   /** Mensaje de chat recibido del otro peer. */
   chatMessage: (text: string) => void;
+  /** (Admin) Alguien espera aprobación para entrar; trae su nombre. */
+  participantWaiting: (name: string) => void;
+  /** (Invitado) Estás en sala de espera, aguardando que el admin te admita. */
+  waitingForApproval: () => void;
+  /** (Invitado) El admin rechazó tu ingreso. */
+  rejected: () => void;
   /** Mi estado de compartir pantalla. `stream` es mi pantalla (para previsualizar). */
   screenShare: (active: boolean, stream?: MediaStream) => void;
   /** El otro peer comparte pantalla (`stream`) o dejó de hacerlo (`null`). */

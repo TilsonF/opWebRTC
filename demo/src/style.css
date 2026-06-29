@@ -217,3 +217,33 @@ button.primary:hover { filter: brightness(1.1); }
   animation: toast-in 0.2s ease;
 }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* ── Sala de espera / overlays ── */
+.check { flex-direction: row !important; align-items: center; gap: 0.5rem !important; }
+.check input { width: auto; }
+.overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(13, 17, 23, 0.85); backdrop-filter: blur(4px);
+  display: grid; place-items: center;
+}
+.overlay-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  padding: 1.6rem 2rem; max-width: 360px; text-align: center;
+  display: flex; flex-direction: column; gap: 1rem; align-items: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+.overlay-actions { display: flex; gap: 0.6rem; }
+.spinner {
+  width: 38px; height: 38px; border: 3px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Etiqueta con el nombre del participante remoto */
+.name-tag {
+  position: absolute; left: 14px; bottom: 14px; z-index: 3;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+  padding: 0.25rem 0.6rem; border-radius: 8px; font-size: 0.85rem;
+}
+.stage.sharing .name-tag { left: auto; right: 18px; top: 18px; bottom: auto; font-size: 0.72rem; }

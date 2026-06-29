@@ -61,6 +61,7 @@ export class Call extends EventEmitter<CallEvents> {
   private ignoreOffer = false;
   // Moderación: el creador de la sala es admin.
   private admin = false;
+  private remoteName?: string;
 
   // Reconexión.
   private reconnectAttempts = 0;
@@ -89,11 +90,30 @@ export class Call extends EventEmitter<CallEvents> {
     return this.admin;
   }
 
+  /** Nombre del otro participante, si lo informó. */
+  get peerName(): string | undefined {
+    return this.remoteName;
+  }
+
   /** Expulsa al otro participante de la sala. Solo el admin puede. */
   kickParticipant(): void {
     if (!this.admin) return;
     this.audit('kick');
     this.signaling?.send({ type: 'kick' });
+  }
+
+  /** (Admin) Admite al participante que espera en la sala de espera. */
+  admit(): void {
+    if (!this.admin) return;
+    this.audit('admit');
+    this.signaling?.send({ type: 'admit' });
+  }
+
+  /** (Admin) Rechaza al participante que espera en la sala de espera. */
+  reject(): void {
+    if (!this.admin) return;
+    this.audit('reject');
+    this.signaling?.send({ type: 'reject' });
   }
 
   /** Envía un mensaje de chat al otro peer por el data channel. */
@@ -278,7 +298,13 @@ export class Call extends EventEmitter<CallEvents> {
     const ch = new SignalingChannel(this.config.signalingUrl);
     this.signaling = ch;
     ch.on('open', () =>
-      ch.send({ type: 'join', room: this.room, token: this.config.token }),
+      ch.send({
+        type: 'join',
+        room: this.room,
+        token: this.config.token,
+        name: this.config.displayName,
+        requireApproval: this.config.requireApproval,
+      }),
     );
     ch.on('error', (e) => this.emit('error', e));
     ch.on('message', (m) => void this.onSignal(m));
@@ -290,8 +316,22 @@ export class Call extends EventEmitter<CallEvents> {
       case 'joined':
         this.polite = msg.polite;
         this.admin = msg.admin;
+        if (msg.peerName) this.remoteName = msg.peerName;
         this.audit('joined', { polite: msg.polite, admin: msg.admin });
         this.createPeerConnection();
+        break;
+      case 'waiting':
+        this.audit('waiting');
+        this.emit('waitingForApproval');
+        break;
+      case 'participant-waiting':
+        this.audit('participant-waiting', { name: msg.name });
+        this.emit('participantWaiting', msg.name);
+        break;
+      case 'rejected':
+        this.audit('rejected');
+        this.emit('rejected');
+        void this.hangup();
         break;
       case 'kicked':
         this.audit('kicked');
@@ -299,7 +339,8 @@ export class Call extends EventEmitter<CallEvents> {
         void this.hangup();
         break;
       case 'peer-joined':
-        this.audit('peer-joined');
+        if (msg.name) this.remoteName = msg.name;
+        this.audit('peer-joined', { name: msg.name });
         break;
       case 'room-full':
         this.emit('error', new Error('La sala ya tiene dos participantes'));
@@ -325,7 +366,10 @@ export class Call extends EventEmitter<CallEvents> {
   }
 
   private createPeerConnection(): void {
-    const pc = new RTCPeerConnection({ iceServers: this.resolvedIce });
+    const pc = new RTCPeerConnection({
+      iceServers: this.resolvedIce,
+      iceTransportPolicy: this.config.iceTransportPolicy,
+    });
     this.pc = pc;
 
     // Canal de datos negociado (mismo id en ambos extremos): bidireccional,

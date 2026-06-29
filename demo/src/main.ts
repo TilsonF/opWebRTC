@@ -69,12 +69,16 @@ function fillSelect(sel: HTMLSelectElement, list: MediaDeviceInfo[], kind: Media
 $('join').onclick = async () => {
   const room = $<HTMLInputElement>('room').value.trim() || 'sala-demo';
   const token = $<HTMLInputElement>('token').value.trim() || undefined;
+  const displayName = $<HTMLInputElement>('name').value.trim() || 'Invitado';
+  const requireApproval = $<HTMLInputElement>('approval').checked;
   const camId = $<HTMLSelectElement>('pre-cam').value;
   const micId = $<HTMLSelectElement>('pre-mic').value;
 
   call = new Call({
     signalingUrl: SIGNALING,
     token,
+    displayName,
+    requireApproval,
     audit: true,
     media: {
       video: camId ? { deviceId: { exact: camId }, width: { ideal: 1280 }, height: { ideal: 720 } } : true,
@@ -100,6 +104,13 @@ $('join').onclick = async () => {
     hasRemote = true;
     // El admin puede expulsar mientras haya alguien a quien expulsar.
     kickBtn.classList.toggle('hidden', !call!.isAdmin);
+    // Etiqueta con el nombre del participante remoto.
+    const pn = $('peer-name');
+    if (call!.peerName) {
+      pn.textContent = call!.peerName;
+      pn.classList.remove('hidden');
+    }
+    $('waiting-overlay').classList.add('hidden'); // ya conectó (admitido)
     updateStage();
   });
   // El otro se fue: limpiar su vista y quitar su tile (sin frame congelado).
@@ -120,6 +131,19 @@ $('join').onclick = async () => {
     appendMsg('them', text);
     // Si el panel está cerrado, avisa con el badge de no leídos.
     if ($('chat').classList.contains('hidden')) bumpUnread();
+  });
+  // Sala de espera (anfitrión): alguien pide entrar; muestra su nombre.
+  call.on('participantWaiting', (name) => {
+    $('admit-name').textContent = name || 'Alguien';
+    $('admit-prompt').classList.remove('hidden');
+  });
+  // Sala de espera (invitado): aguardando aprobación del anfitrión.
+  call.on('waitingForApproval', () => $('waiting-overlay').classList.remove('hidden'));
+  // El anfitrión rechazó el ingreso.
+  call.on('rejected', () => {
+    blur?.stop();
+    resetToPrejoin();
+    showToast('El anfitrión rechazó tu ingreso.');
   });
   // Yo comparto pantalla: previsualizo mi propia pantalla como vista principal.
   call.on('screenShare', (active, s) => {
@@ -224,6 +248,16 @@ kickBtn.onclick = () => {
   showToast('Sacaste al participante de la sala.');
 };
 
+// Sala de espera: el anfitrión admite o rechaza.
+$('admit-yes').onclick = () => {
+  call?.admit();
+  $('admit-prompt').classList.add('hidden');
+};
+$('admit-no').onclick = () => {
+  call?.reject();
+  $('admit-prompt').classList.add('hidden');
+};
+
 // ── Chat ──
 function appendMsg(kind: 'me' | 'them', text: string): void {
   const div = document.createElement('div');
@@ -270,6 +304,9 @@ function resetToPrejoin(): void {
   $('chat').classList.add('hidden');
   chatToggle.classList.remove('active');
   clearUnread();
+  $('waiting-overlay').classList.add('hidden');
+  $('admit-prompt').classList.add('hidden');
+  $('peer-name').classList.add('hidden');
   callView.classList.add('hidden');
   prejoin.classList.remove('hidden');
   localVideo.srcObject = remoteVideo.srcObject = screenView.srcObject = null;

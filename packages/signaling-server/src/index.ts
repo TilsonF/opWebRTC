@@ -79,9 +79,16 @@ interface Peer {
   socket: WebSocket;
   room: string;
   isAdmin: boolean;
+  name: string;
 }
 
-const rooms = new Map<string, Peer[]>();
+interface Room {
+  members: Peer[];
+  requireApproval: boolean;
+  pending?: Peer; // participante en sala de espera
+}
+
+const rooms = new Map<string, Room>();
 
 function audit(event: string, data: Record<string, unknown>): void {
   console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...data }));
@@ -90,10 +97,16 @@ function audit(event: string, data: Record<string, unknown>): void {
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (socket) => {
-  const peer: Peer = { id: randomUUID(), socket, room: '', isAdmin: false };
+  const peer: Peer = { id: randomUUID(), socket, room: '', isAdmin: false, name: '' };
 
   socket.on('message', (raw) => {
-    let msg: { type: string; room?: string; token?: unknown };
+    let msg: {
+      type: string;
+      room?: string;
+      token?: unknown;
+      name?: string;
+      requireApproval?: boolean;
+    };
     try {
       msg = JSON.parse(raw.toString());
     } catch {
@@ -107,74 +120,146 @@ wss.on('connection', (socket) => {
         peer.socket.close();
         return;
       }
-      joinRoom(peer, msg.room);
+      peer.name = (msg.name ?? '').slice(0, 80);
+      joinRoom(peer, msg.room, Boolean(msg.requireApproval));
       return;
     }
 
     if (msg.type === 'signal' || msg.type === 'screen') relay(peer, raw.toString());
     if (msg.type === 'kick') kick(peer);
+    if (msg.type === 'admit') admit(peer);
+    if (msg.type === 'reject') reject(peer);
   });
 
   socket.on('close', () => leaveRoom(peer));
 });
 
-function joinRoom(peer: Peer, room: string): void {
-  const members = rooms.get(room) ?? [];
-  if (members.length >= 2) {
-    peer.socket.send(JSON.stringify({ type: 'room-full' }));
-    audit('room-full', { room, peer: peer.id });
+function send(peer: Peer, msg: unknown): void {
+  peer.socket.send(JSON.stringify(msg));
+}
+
+function admin(room: Room): Peer | undefined {
+  return room.members.find((m) => m.isAdmin);
+}
+
+function joinRoom(peer: Peer, roomId: string, requireApproval: boolean): void {
+  let room = rooms.get(roomId);
+
+  // Primer participante: crea la sala, es admin y fija si requiere aprobación.
+  if (!room) {
+    room = { members: [peer], requireApproval };
+    rooms.set(roomId, room);
+    peer.room = roomId;
+    peer.isAdmin = true;
+    send(peer, { type: 'joined', peerId: peer.id, polite: true, admin: true });
+    audit('join', { room: roomId, peer: peer.id, admin: true, requireApproval });
     return;
   }
 
-  peer.room = room;
-  // El primero en entrar es polite (perfect negotiation) y admin (moderador).
-  const isFirst = members.length === 0;
-  peer.isAdmin = isFirst;
-  members.push(peer);
-  rooms.set(room, members);
-
-  peer.socket.send(
-    JSON.stringify({ type: 'joined', peerId: peer.id, polite: isFirst, admin: isFirst }),
-  );
-
-  for (const other of members) {
-    if (other.id !== peer.id) {
-      other.socket.send(JSON.stringify({ type: 'peer-joined', peerId: peer.id }));
-    }
+  // Sala llena (ya hay 2 o hay uno en espera).
+  if (room.members.length >= 2 || room.pending) {
+    send(peer, { type: 'room-full' });
+    audit('room-full', { room: roomId, peer: peer.id });
+    return;
   }
-  audit('join', { room, peer: peer.id, admin: isFirst, size: members.length });
+
+  peer.room = roomId;
+
+  // Sala de espera: el segundo queda pendiente hasta que el admin lo admita.
+  if (room.requireApproval) {
+    room.pending = peer;
+    send(peer, { type: 'waiting' });
+    const host = admin(room);
+    if (host) send(host, { type: 'participant-waiting', name: peer.name });
+    audit('waiting', { room: roomId, peer: peer.id, name: peer.name });
+    return;
+  }
+
+  // Sin aprobación: conexión inmediata (comportamiento por defecto).
+  admitToRoom(room, peer);
+}
+
+/** Mete al peer como miembro y dispara la negociación con el admin. */
+function admitToRoom(room: Room, peer: Peer): void {
+  const host = admin(room);
+  room.members.push(peer);
+  send(peer, {
+    type: 'joined',
+    peerId: peer.id,
+    polite: false,
+    admin: false,
+    peerName: host?.name,
+  });
+  if (host) send(host, { type: 'peer-joined', peerId: peer.id, name: peer.name });
+  audit('join', { room: peer.room, peer: peer.id, admin: false });
+}
+
+function admit(host: Peer): void {
+  const room = rooms.get(host.room);
+  if (!host.isAdmin || !room?.pending) return;
+  const pending = room.pending;
+  room.pending = undefined;
+  admitToRoom(room, pending);
+  audit('admit', { room: host.room, by: host.id, peer: pending.id });
+}
+
+function reject(host: Peer): void {
+  const room = rooms.get(host.room);
+  if (!host.isAdmin || !room?.pending) return;
+  const pending = room.pending;
+  room.pending = undefined;
+  send(pending, { type: 'rejected' });
+  pending.socket.close();
+  audit('reject', { room: host.room, by: host.id, peer: pending.id });
 }
 
 function relay(from: Peer, rawJson: string): void {
-  const members = rooms.get(from.room) ?? [];
-  for (const other of members) {
+  const room = rooms.get(from.room);
+  for (const other of room?.members ?? []) {
     if (other.id !== from.id) other.socket.send(rawJson);
   }
 }
 
-function kick(admin: Peer): void {
-  if (!admin.isAdmin) return;
-  const members = rooms.get(admin.room) ?? [];
-  for (const other of members) {
-    if (other.id !== admin.id) {
-      other.socket.send(JSON.stringify({ type: 'kicked' }));
+function kick(host: Peer): void {
+  if (!host.isAdmin) return;
+  const room = rooms.get(host.room);
+  for (const other of room?.members ?? []) {
+    if (other.id !== host.id) {
+      send(other, { type: 'kicked' });
       other.socket.close();
     }
   }
-  audit('kick', { room: admin.room, by: admin.id });
+  audit('kick', { room: host.room, by: host.id });
 }
 
 function leaveRoom(peer: Peer): void {
-  const members = rooms.get(peer.room);
-  if (!members) return;
-  const remaining = members.filter((m) => m.id !== peer.id);
+  const room = rooms.get(peer.room);
+  if (!room) return;
 
-  for (const other of remaining) {
-    other.socket.send(JSON.stringify({ type: 'peer-left', peerId: peer.id }));
+  // Si el que sale estaba en sala de espera, solo límpialo.
+  if (room.pending?.id === peer.id) {
+    room.pending = undefined;
+    audit('leave-pending', { room: peer.room, peer: peer.id });
+    return;
   }
 
-  if (remaining.length) rooms.set(peer.room, remaining);
-  else rooms.delete(peer.room);
+  const remaining = room.members.filter((m) => m.id !== peer.id);
+  for (const other of remaining) send(other, { type: 'peer-left', peerId: peer.id });
+
+  // Si se va el admin y hay alguien esperando, recházalo (sala sin moderador).
+  if (peer.isAdmin && room.pending) {
+    send(room.pending, { type: 'rejected' });
+    room.pending.socket.close();
+    room.pending = undefined;
+  }
+
+  if (remaining.length) {
+    room.members = remaining;
+  } else if (!room.pending) {
+    rooms.delete(peer.room);
+  } else {
+    room.members = remaining;
+  }
 
   audit('leave', { room: peer.room, peer: peer.id });
 }

@@ -12,6 +12,9 @@
       <h1>opWebRTC</h1>
       <p class="sub">videollamada P2P · personalizable · segura</p>
       <div class="form">
+        <label>Tu nombre
+          <input id="name" placeholder="¿Cómo te llamas?" />
+        </label>
         <label>Sala
           <input id="room" value="sala-demo" />
         </label>
@@ -23,6 +26,10 @@
         </label>
         <label>Token (si el servidor pide auth)
           <input id="token" placeholder="opcional" />
+        </label>
+        <label class="check">
+          <input type="checkbox" id="approval" />
+          Requiere aprobación del anfitrión (sala de espera)
         </label>
         <button id="join" class="primary">Entrar a la llamada</button>
       </div>
@@ -45,6 +52,7 @@
           <video id="remote" autoplay playsinline></video>
           <video id="local" autoplay playsinline muted></video>
           <div id="placeholder" class="placeholder">Esperando al otro participante…</div>
+          <span id="peer-name" class="name-tag hidden"></span>
         </div>
         <aside id="chat" class="chat hidden">
           <div class="chat-header">Chat</div>
@@ -99,6 +107,25 @@
         </button>
       </footer>
     </section>
+
+    <!-- Sala de espera (invitado) -->
+    <div id="waiting-overlay" class="overlay hidden">
+      <div class="overlay-card">
+        <div class="spinner"></div>
+        <p>Esperando que el anfitrión te admita…</p>
+      </div>
+    </div>
+
+    <!-- Solicitud de ingreso (anfitrión) -->
+    <div id="admit-prompt" class="overlay hidden">
+      <div class="overlay-card">
+        <p><strong id="admit-name"></strong> quiere unirse a la sala.</p>
+        <div class="overlay-actions">
+          <button id="admit-yes" class="primary">Admitir</button>
+          <button id="admit-no">Rechazar</button>
+        </div>
+      </div>
+    </div>
 
     <div id="toast" class="toast hidden"></div>
 

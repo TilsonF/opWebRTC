@@ -2,15 +2,20 @@ import { EventEmitter } from 'eventemitter3';
 
 /** Mensajes que viajan por el canal de señalización (cliente <-> servidor). */
 export type SignalMessage =
-  | { type: 'join'; room: string; token?: string }
-  | { type: 'joined'; peerId: string; polite: boolean; admin: boolean }
-  | { type: 'peer-joined'; peerId: string }
+  | { type: 'join'; room: string; token?: string; name?: string; requireApproval?: boolean }
+  | { type: 'joined'; peerId: string; polite: boolean; admin: boolean; peerName?: string }
+  | { type: 'peer-joined'; peerId: string; name?: string }
   | { type: 'peer-left'; peerId: string }
   | { type: 'room-full' }
   | { type: 'unauthorized' }
   | { type: 'screen'; active: boolean }
   | { type: 'kick' }
   | { type: 'kicked' }
+  | { type: 'waiting' }
+  | { type: 'participant-waiting'; name: string }
+  | { type: 'admit' }
+  | { type: 'reject' }
+  | { type: 'rejected' }
   | { type: 'signal'; data: RTCSessionDescriptionInit | RTCIceCandidateInit | null };
 
 interface SignalingEvents {
