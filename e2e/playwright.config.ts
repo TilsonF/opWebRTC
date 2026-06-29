@@ -42,6 +42,14 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
+      // Segundo signaling CON auth para los tests de token (puerto 8081).
+      command: 'AUTH_ENABLED=true AUTH_TOKEN=secreto-e2e PORT=8081 npm run dev:signaling',
+      cwd: '..',
+      port: 8081,
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+    {
       command: 'npm run dev -w demo -- --port 5199 --strictPort',
       cwd: '..',
       url: 'http://localhost:5199',

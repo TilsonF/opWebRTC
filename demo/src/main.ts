@@ -37,8 +37,10 @@ function updateStage(): void {
   placeholder.classList.toggle('hidden', hasRemote || localShare);
 }
 
-const SIGNALING = `ws://${location.hostname}:8080`;
-const ICE_ENDPOINT = `http://${location.hostname}:8080/ice`;
+// Configurables por query param (útil para tests y despliegues).
+const params = new URLSearchParams(location.search);
+const SIGNALING = params.get('signaling') ?? `ws://${location.hostname}:8080`;
+const ICE_ENDPOINT = params.get('ice') ?? `http://${location.hostname}:8080/ice`;
 
 // ── Prejoin: poblar dispositivos (requiere permiso para ver labels) ──────────
 async function loadDevices(): Promise<void> {
