@@ -83,6 +83,8 @@ export interface CallEvents {
   remoteLeft: () => void;
   /** Fuiste expulsado por el admin de la sala. */
   kicked: () => void;
+  /** Mensaje de chat recibido del otro peer. */
+  chatMessage: (text: string) => void;
   /** Mi estado de compartir pantalla. `stream` es mi pantalla (para previsualizar). */
   screenShare: (active: boolean, stream?: MediaStream) => void;
   /** El otro peer comparte pantalla (`stream`) o dejó de hacerlo (`null`). */

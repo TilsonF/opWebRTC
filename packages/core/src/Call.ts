@@ -52,6 +52,8 @@ export class Call extends EventEmitter<CallEvents> {
   private screenSharing = false;
   // Id del stream de cámara remoto, para distinguirlo del de pantalla.
   private remoteCameraStreamId?: string;
+  // Canal de datos para el chat de texto.
+  private chatChannel?: RTCDataChannel;
 
   // Estado de perfect negotiation.
   private polite = false;
@@ -92,6 +94,14 @@ export class Call extends EventEmitter<CallEvents> {
     if (!this.admin) return;
     this.audit('kick');
     this.signaling?.send({ type: 'kick' });
+  }
+
+  /** Envía un mensaje de chat al otro peer por el data channel. */
+  sendChat(text: string): boolean {
+    if (this.chatChannel?.readyState !== 'open') return false;
+    this.chatChannel.send(text);
+    this.audit('chat-sent');
+    return true;
   }
 
   /** Adquiere cámara/mic y se une a la sala. */
@@ -317,6 +327,12 @@ export class Call extends EventEmitter<CallEvents> {
   private createPeerConnection(): void {
     const pc = new RTCPeerConnection({ iceServers: this.resolvedIce });
     this.pc = pc;
+
+    // Canal de datos negociado (mismo id en ambos extremos): bidireccional,
+    // sin handshake extra. Para el chat de texto.
+    const chat = pc.createDataChannel('chat', { negotiated: true, id: 0 });
+    this.chatChannel = chat;
+    chat.onmessage = (e) => this.emit('chatMessage', e.data as string);
 
     for (const track of this.localStream?.getTracks() ?? []) {
       const sender = pc.addTrack(track, this.localStream!);

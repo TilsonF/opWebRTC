@@ -15,6 +15,8 @@ const stateBadge = $('state');
 const statsBadge = $('stats');
 const kickBtn = $('kick');
 const adminBadge = $('admin-badge');
+const chatLog = $('chat-log');
+const chatToggle = $('chat-toggle');
 
 let call: Call | undefined;
 let blur: BackgroundBlur | undefined;
@@ -112,6 +114,7 @@ $('join').onclick = async () => {
     resetToPrejoin();
     setTimeout(() => alert('El administrador te sacó de la sala.'), 50);
   });
+  call.on('chatMessage', (text) => appendMsg('them', text));
   // Yo comparto pantalla: previsualizo mi propia pantalla como vista principal.
   call.on('screenShare', (active, s) => {
     localShare = active;
@@ -202,11 +205,38 @@ $('blur').onclick = async () => {
 
 kickBtn.onclick = () => call?.kickParticipant();
 
+// ── Chat ──
+function appendMsg(kind: 'me' | 'them', text: string): void {
+  const div = document.createElement('div');
+  div.className = `msg ${kind}`;
+  div.textContent = text;
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+chatToggle.onclick = () => {
+  const shown = !$('chat').classList.toggle('hidden');
+  chatToggle.classList.toggle('active', shown);
+};
+
+$<HTMLFormElement>('chat-form').onsubmit = (e) => {
+  e.preventDefault();
+  const input = $<HTMLInputElement>('chat-text');
+  const text = input.value.trim();
+  if (text && call?.sendChat(text)) {
+    appendMsg('me', text);
+    input.value = '';
+  }
+};
+
 function resetToPrejoin(): void {
   blurOn = localShare = remoteShare = hasRemote = false;
   updateStage();
   kickBtn.classList.add('hidden');
   adminBadge.classList.add('hidden');
+  chatLog.innerHTML = '';
+  $('chat').classList.add('hidden');
+  chatToggle.classList.remove('active');
   callView.classList.add('hidden');
   prejoin.classList.remove('hidden');
   localVideo.srcObject = remoteVideo.srcObject = screenView.srcObject = null;
