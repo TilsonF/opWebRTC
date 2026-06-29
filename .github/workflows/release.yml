@@ -1,7 +1,8 @@
 name: Release
 
 # Publica @opwebrtc/core a npm al pushear un tag vX.Y.Z.
-# Requiere el secreto NPM_TOKEN (token "Automation" de npm) en el repo.
+# Usa Trusted Publishing (OIDC): sin tokens de larga vida. La identidad del
+# workflow se verifica contra el "Trusted Publisher" configurado en npm.
 on:
   push:
     tags: ['v*']
@@ -11,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # provenance
+      id-token: write # OIDC (trusted publishing) + provenance
     steps:
       - uses: actions/checkout@v4
 
@@ -20,10 +21,11 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      # Trusted Publishing (OIDC) requiere npm >= 11.5.1; Node 22 trae npm 10.x.
+      - run: npm install -g npm@latest
+
       - run: npm ci
       - run: npm run build
 
-      - name: Publicar a npm
+      - name: Publicar a npm (OIDC, sin token)
         run: npm publish -w @opwebrtc/core --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
