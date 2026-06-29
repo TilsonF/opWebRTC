@@ -60,7 +60,7 @@
   "devDependencies": {
     "@mediapipe/tasks-vision": "^0.10.18",
     "tsup": "^8.3.5",
-    "typescript": "^5.7.2"
+    "typescript": "^6.0.3"
   },
   "license": "MIT"
 }
