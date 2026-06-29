@@ -1,0 +1,17 @@
+{
+  "port": 8080,
+  "auth": {
+    "enabled": false,
+    "token": "cambia-esto-por-un-secreto"
+  },
+  "turn": {
+    "secret": "",
+    "urls": ["turn:tu-dominio:3478", "turns:tu-dominio:5349"],
+    "ttl": 3600,
+    "stunUrl": "stun:stun.l.google.com:19302"
+  },
+  "tls": {
+    "cert": "",
+    "key": ""
+  }
+}

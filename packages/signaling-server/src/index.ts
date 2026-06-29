@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createServer as createHttp, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createHttps } from 'node:https';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { config } from './config.js';
 
 /**
  * Servidor de señalización para videollamadas 1‑a‑1.
@@ -15,30 +16,23 @@ import { WebSocketServer, type WebSocket } from 'ws';
  *  - Soporta WSS si se le pasan certificados TLS.
  */
 
-const PORT = Number(process.env.PORT ?? 8080);
+const PORT = config.port;
 
 // ── Auth de sala (opcional) ────────────────────────────────────────────────
-const AUTH_ENABLED = (process.env.AUTH_ENABLED ?? 'false').toLowerCase() === 'true';
-const AUTH_TOKEN = process.env.AUTH_TOKEN ?? '';
-
 function isAuthorized(token: unknown): boolean {
-  if (!AUTH_ENABLED) return true;
-  return typeof token === 'string' && token.length > 0 && token === AUTH_TOKEN;
+  if (!config.auth.enabled) return true;
+  return typeof token === 'string' && token.length > 0 && token === config.auth.token;
 }
 
 // ── TURN efímero (coturn REST: user = expiry:id, pass = HMAC-SHA1) ──────────
-const TURN_SECRET = process.env.TURN_SECRET ?? '';
-const TURN_URLS = (process.env.TURN_URLS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-const TURN_TTL = Number(process.env.TURN_TTL ?? 3600);
-const STUN_URL = process.env.STUN_URL ?? 'stun:stun.l.google.com:19302';
-
 function iceServers(): RTCIceServerLike[] {
-  const servers: RTCIceServerLike[] = [{ urls: STUN_URL }];
-  if (TURN_SECRET && TURN_URLS.length) {
-    const expiry = Math.floor(Date.now() / 1000) + TURN_TTL;
+  const { secret, urls, ttl, stunUrl } = config.turn;
+  const servers: RTCIceServerLike[] = [{ urls: stunUrl }];
+  if (secret && urls.length) {
+    const expiry = Math.floor(Date.now() / 1000) + ttl;
     const username = `${expiry}:opwebrtc`;
-    const credential = createHmac('sha1', TURN_SECRET).update(username).digest('base64');
-    servers.push({ urls: TURN_URLS, username, credential });
+    const credential = createHmac('sha1', secret).update(username).digest('base64');
+    servers.push({ urls, username, credential });
   }
   return servers;
 }
@@ -50,9 +44,7 @@ interface RTCIceServerLike {
 }
 
 // ── TLS opcional (WSS) ─────────────────────────────────────────────────────
-const TLS_CERT = process.env.TLS_CERT;
-const TLS_KEY = process.env.TLS_KEY;
-const useTls = Boolean(TLS_CERT && TLS_KEY);
+const useTls = Boolean(config.tls.cert && config.tls.key);
 
 function handleHttp(req: IncomingMessage, res: ServerResponse): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -70,7 +62,10 @@ function handleHttp(req: IncomingMessage, res: ServerResponse): void {
 }
 
 const server = useTls
-  ? createHttps({ cert: readFileSync(TLS_CERT!), key: readFileSync(TLS_KEY!) }, handleHttp)
+  ? createHttps(
+      { cert: readFileSync(config.tls.cert!), key: readFileSync(config.tls.key!) },
+      handleHttp,
+    )
   : createHttp(handleHttp);
 
 // ── Señalización WebSocket ─────────────────────────────────────────────────
@@ -267,7 +262,7 @@ function leaveRoom(peer: Peer): void {
 server.listen(PORT, () => {
   const proto = useTls ? 'wss' : 'ws';
   console.log(`✅ Señalización opWebRTC en ${proto}://localhost:${PORT}`);
-  console.log(`   auth: ${AUTH_ENABLED ? 'ACTIVADA (token requerido)' : 'desactivada'}`);
-  console.log(`   TURN: ${TURN_SECRET && TURN_URLS.length ? 'efímero activo' : 'solo STUN'}`);
+  console.log(`   auth: ${config.auth.enabled ? 'ACTIVADA (token requerido)' : 'desactivada'}`);
+  console.log(`   TURN: ${config.turn.secret && config.turn.urls.length ? 'efímero activo' : 'solo STUN'}`);
   console.log(`   ICE endpoint: ${useTls ? 'https' : 'http'}://localhost:${PORT}/ice`);
 });
