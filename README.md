@@ -4,6 +4,8 @@
 
 Librería **WebRTC agnóstica a frameworks** (TS/JS) para videollamadas personalizables, seguras y ligeras. P2P 1‑a‑1 con cámara, micrófono, compartir pantalla, blur de fondo, moderación y chat.
 
+> 📖 **Manuales internos** en [`docs/`](./docs) · Roadmap en [`ROADMAP.md`](./ROADMAP.md)
+
 ## Estructura (monorepo)
 
 ```
