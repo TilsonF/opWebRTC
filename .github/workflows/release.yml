@@ -1,18 +1,20 @@
 name: Release
 
-# Publica @opwebrtc/core a npm al pushear un tag vX.Y.Z.
-# Usa Trusted Publishing (OIDC): sin tokens de larga vida. La identidad del
-# workflow se verifica contra el "Trusted Publisher" configurado en npm.
+# Publica todos los paquetes @opwebrtc/* a npm.
+# Autenticación por token (NPM_TOKEN, granular acotado al scope @opwebrtc):
+# un solo secreto publica todos los paquetes, sin Trusted Publisher por paquete.
+# Se dispara por tag vX.Y.Z o manualmente (workflow_dispatch).
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # OIDC (trusted publishing) + provenance
+      id-token: write # provenance
     steps:
       - uses: actions/checkout@v4
 
@@ -21,11 +23,20 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      # Trusted Publishing (OIDC) requiere npm >= 11.5.1; Node 22 trae npm 10.x.
-      - run: npm install -g npm@latest
-
       - run: npm ci
       - run: npm run build
 
-      - name: Publicar a npm (OIDC, sin token)
-        run: npm publish -w @opwebrtc/core --provenance --access public
+      - name: Publicar paquetes (salta los ya publicados)
+        run: |
+          for pkg in core signaling-server react vue angular; do
+            name="@opwebrtc/$pkg"
+            ver=$(node -p "require('./packages/$pkg/package.json').version")
+            if npm view "$name@$ver" version >/dev/null 2>&1; then
+              echo "→ $name@$ver ya publicado, salto"
+            else
+              echo "→ publicando $name@$ver"
+              npm publish -w "$name" --provenance --access public
+            fi
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
