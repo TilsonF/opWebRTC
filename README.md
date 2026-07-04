@@ -164,5 +164,5 @@ cierra la conexión y el core emite un evento `error`. Ver
 
 ### Pendientes / bugs abiertos
 
-- [ ] Blur: se congela en la vista del peer remoto (local fluido) — investigar vía WebCodecs/insertable streams
+- [x] Blur en la vista remota: corregido con Insertable Streams (WebCodecs); fallback a canvas en Safari/Firefox
 ```

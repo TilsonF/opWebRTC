@@ -20,7 +20,8 @@
 - TURN forzado `iceTransportPolicy: 'relay'` (flag listo) — **mantener en roadmap**
 
 ## ⏸️ Bugs abiertos
-- Blur se congela en la vista remota → vía: WebCodecs / insertable streams
+- (Blur congelado en remoto: **corregido** con Insertable Streams — pendiente
+  visto bueno del usuario en navegador real; fallback a canvas en Safari/Firefox)
 
 ## 🔵 En curso / próximo (sobre P2P)
 - [x] Adaptadores de framework:

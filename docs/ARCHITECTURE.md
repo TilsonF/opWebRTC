@@ -61,8 +61,10 @@ Tipos en `packages/core/src/signaling.ts` (fuente de verdad del protocolo).
 - Video/audio HD, mute cámara/mic
 - Selección de dispositivos en vivo (`getDevices`, `switchCamera/Microphone`)
 - Compartir pantalla como **pista adicional** (el remoto ve pantalla + cámara)
-- Blur de fondo (`@opwebrtc/core/blur`, opt-in, MediaPipe) — **bug abierto: se
-  congela en el remoto; pendiente vía WebCodecs**
+- Blur de fondo (`@opwebrtc/core/blur`, opt-in, MediaPipe). Usa **Insertable
+  Streams** (MediaStreamTrackProcessor/Generator) para producir un track nativo
+  que el encoder transmite sin congelarse; **fallback** a `canvas.captureStream`
+  en navegadores sin soporte (Safari/Firefox)
 - Reconexión por ICE restart (parcial; ver ROADMAP)
 - TURN efímero (`iceServersProvider`) y TURN forzado (`iceTransportPolicy`)
 - Chat por data channel negociado

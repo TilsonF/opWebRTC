@@ -4,28 +4,51 @@ import {
   type MPMask,
 } from '@mediapipe/tasks-vision';
 
+// APIs experimentales (Chromium) no incluidas en lib.dom.
+declare global {
+  interface MediaStreamTrackProcessor {
+    readonly readable: ReadableStream<VideoFrame>;
+  }
+  // eslint-disable-next-line no-var
+  var MediaStreamTrackProcessor: {
+    new (init: { track: MediaStreamTrack }): MediaStreamTrackProcessor;
+  };
+  interface MediaStreamTrackGenerator extends MediaStreamTrack {
+    readonly writable: WritableStream<VideoFrame>;
+  }
+  // eslint-disable-next-line no-var
+  var MediaStreamTrackGenerator: {
+    new (init: { kind: 'video' | 'audio' }): MediaStreamTrackGenerator;
+  };
+}
+
 /**
  * Blur de fondo opt-in. Entry point separado (`@opwebrtc/core/blur`) para que
  * el core principal siga ligero: MediaPipe solo se descarga si importas esto.
  *
- * Diseño clave: el RENDER (dibujar vídeo + máscara y entregar el frame) corre
- * a la tasa de pantalla, mientras la SEGMENTACIÓN corre aparte y throttleada.
- * Así la salida nunca se congela aunque la GPU tarde: solo la máscara se
- * refresca un poco menos seguido. (Antes, saltarse el dibujo durante la
- * segmentación congelaba el vídeo que veía el otro participante).
+ * Dos vías de salida:
+ *  1. Insertable Streams (WebCodecs) — preferida. Transforma los VideoFrame y
+ *     produce un track NATIVO (MediaStreamTrackGenerator). El encoder de WebRTC
+ *     lo codifica sin problemas → el peer remoto lo ve fluido.
+ *  2. canvas.captureStream() — fallback para navegadores sin insertable streams
+ *     (p. ej. Safari/Firefox). Puede congelarse en la vista remota en algunos
+ *     navegadores (limitante conocido de capturar un canvas hacia WebRTC).
  *
- * Por defecto carga wasm + modelo desde CDN. Pásalos en local (wasmPath /
- * modelAssetPath) si quieres offline o cero dependencia de CDN.
+ * En ambas: la segmentación (persona vs fondo) corre throttleada y actualiza
+ * una máscara; el compositing usa la última máscara conocida, así el vídeo
+ * nunca se detiene aunque la GPU tarde.
  */
 export interface BlurOptions {
   /** Radio del difuminado en px. Por defecto 12. */
   blurRadius?: number;
-  /** Tasa de SEGMENTACIÓN en fps (el render va a la tasa de pantalla). Por defecto 24. */
+  /** Tasa de SEGMENTACIÓN en fps. Por defecto 24. */
   fps?: number;
   /** Carpeta wasm de MediaPipe. */
   wasmPath?: string;
   /** Ruta del modelo .tflite de segmentación selfie. */
   modelAssetPath?: string;
+  /** Forzar el fallback de canvas (para pruebas). Por defecto usa lo mejor disponible. */
+  forceCanvas?: boolean;
 }
 
 const CDN_WASM =
@@ -33,18 +56,29 @@ const CDN_WASM =
 const CDN_MODEL =
   'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
 
+/** ¿El navegador soporta Insertable Streams para video? */
+export function supportsInsertableStreams(): boolean {
+  return (
+    typeof MediaStreamTrackProcessor !== 'undefined' &&
+    typeof MediaStreamTrackGenerator !== 'undefined'
+  );
+}
+
 export class BackgroundBlur {
   private segmenter?: ImageSegmenter;
-  private readonly video = document.createElement('video');
   private readonly canvas = document.createElement('canvas');
   private readonly mask = document.createElement('canvas');
+  private readonly segIn = document.createElement('canvas');
   private readonly ctx: CanvasRenderingContext2D;
   private readonly maskCtx: CanvasRenderingContext2D;
+  private readonly segCtx: CanvasRenderingContext2D;
+
+  // Vía canvas (fallback).
+  private readonly video = document.createElement('video');
   private outTrack?: MediaStreamTrack;
 
   private running = false;
   private hasMask = false;
-  // Estado de la segmentación asíncrona.
   private processing = false;
   private processingStart = 0;
   private lastSeg = 0;
@@ -58,9 +92,11 @@ export class BackgroundBlur {
       fps: opts.fps ?? 24,
       wasmPath: opts.wasmPath ?? CDN_WASM,
       modelAssetPath: opts.modelAssetPath ?? CDN_MODEL,
+      forceCanvas: opts.forceCanvas ?? false,
     };
     this.ctx = this.canvas.getContext('2d')!;
     this.maskCtx = this.mask.getContext('2d', { willReadFrequently: true })!;
+    this.segCtx = this.segIn.getContext('2d')!;
     this.video.autoplay = true;
     this.video.muted = true;
     this.video.playsInline = true;
@@ -80,25 +116,19 @@ export class BackgroundBlur {
 
   /**
    * Procesa un track de cámara y devuelve un track con el fondo difuminado.
-   * Pásalo a `call.replaceOutgoingVideo(track)` para enviarlo al peer.
+   * Usa Insertable Streams si el navegador lo soporta; si no, cae a canvas.
    */
   async process(input: MediaStreamTrack): Promise<MediaStreamTrack> {
     await this.init();
-    this.video.srcObject = new MediaStream([input]);
-    await this.video.play();
-
     const { width = 1280, height = 720 } = input.getSettings();
     this.canvas.width = width;
     this.canvas.height = height;
-
     this.running = true;
-    // captureStream con tasa automática (30fps): el navegador muestrea el canvas
-    // de forma continua y alimenta el encoder de WebRTC sin pausas. (captureStream(0)
-    // + requestFrame congelaba al remoto: el encoder solo recibía el primer frame).
-    const stream = this.canvas.captureStream(30);
-    this.outTrack = stream.getVideoTracks()[0]!;
-    requestAnimationFrame(this.render);
-    return this.outTrack;
+
+    if (supportsInsertableStreams() && !this.opts.forceCanvas) {
+      return this.processInsertable(input);
+    }
+    return this.processCanvas(input);
   }
 
   /** Detiene el procesamiento y libera recursos. */
@@ -114,24 +144,63 @@ export class BackgroundBlur {
     this.segmenter = undefined;
   }
 
-  /** Render a tasa de pantalla: salida fluida, no depende de la segmentación. */
-  private readonly render = (): void => {
-    if (!this.running) return;
-    requestAnimationFrame(this.render);
-    if (this.video.readyState < 2) return;
-    try {
-      this.composite();
-    } catch {
-      // un frame fallido no debe matar el render
-    }
-    this.maybeSegment();
-  };
+  // ── Vía 1: Insertable Streams (preferida) ──────────────────────────────────
+  private processInsertable(input: MediaStreamTrack): MediaStreamTrack {
+    const processor = new MediaStreamTrackProcessor({ track: input });
+    const generator = new MediaStreamTrackGenerator({ kind: 'video' });
+    this.outTrack = generator;
 
-  /** Segmentación asíncrona y throttleada; actualiza la máscara sin bloquear. */
-  private maybeSegment(): void {
+    const transformer = new TransformStream<VideoFrame, VideoFrame>({
+      transform: (frame, controller) => {
+        if (!this.running) {
+          frame.close();
+          return;
+        }
+        try {
+          const out = this.compositeFrame(frame);
+          frame.close();
+          controller.enqueue(out);
+        } catch {
+          controller.enqueue(frame); // passthrough si un frame falla
+        }
+      },
+    });
+
+    processor.readable
+      .pipeThrough(transformer)
+      .pipeTo(generator.writable)
+      .catch(() => {
+        /* el stream se cierra al detener; ignorar */
+      });
+
+    return generator;
+  }
+
+  /** Compone un VideoFrame (persona nítida sobre fondo difuminado) → VideoFrame. */
+  private compositeFrame(frame: VideoFrame): VideoFrame {
+    const { width: w, height: h } = this.canvas;
+    this.maybeSegment(frame, w, h);
+
+    const ctx = this.ctx;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(frame, 0, 0, w, h);
+    if (this.hasMask) {
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(this.mask, 0, 0, w, h);
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.filter = `blur(${this.opts.blurRadius}px)`;
+      ctx.drawImage(frame, 0, 0, w, h);
+      ctx.filter = 'none';
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    // Timestamp del frame original: preserva la cadencia para el encoder.
+    return new VideoFrame(this.canvas, { timestamp: frame.timestamp ?? 0 });
+  }
+
+  /** Segmentación throttleada usando la fuente dada (VideoFrame o video). */
+  private maybeSegment(source: CanvasImageSource, w: number, h: number): void {
     const now = performance.now();
     if (now - this.lastSeg < 1000 / this.opts.fps) return;
-    // Re-entrancy guard + watchdog (libera si una segmentación quedó colgada).
     if (this.processing) {
       if (now - this.processingStart > 1000) this.processing = false;
       else return;
@@ -141,10 +210,15 @@ export class BackgroundBlur {
     this.lastSeg = now;
     this.processing = true;
     this.processingStart = now;
-    const ts = Math.max(now, this.lastTs + 1); // estrictamente creciente
+    if (this.segIn.width !== w || this.segIn.height !== h) {
+      this.segIn.width = w;
+      this.segIn.height = h;
+    }
+    this.segCtx.drawImage(source, 0, 0, w, h);
+    const ts = Math.max(now, this.lastTs + 1);
     this.lastTs = ts;
     try {
-      this.segmenter.segmentForVideo(this.video, ts, (res) => {
+      this.segmenter.segmentForVideo(this.segIn, ts, (res) => {
         try {
           this.updateMask(res.categoryMask);
         } finally {
@@ -157,7 +231,41 @@ export class BackgroundBlur {
     }
   }
 
-  /** Convierte la máscara de MediaPipe en un canvas con alpha = persona. */
+  // ── Vía 2: canvas.captureStream (fallback) ─────────────────────────────────
+  private async processCanvas(input: MediaStreamTrack): Promise<MediaStreamTrack> {
+    this.video.srcObject = new MediaStream([input]);
+    await this.video.play();
+    const stream = this.canvas.captureStream(30);
+    this.outTrack = stream.getVideoTracks()[0]!;
+    requestAnimationFrame(this.renderCanvas);
+    return this.outTrack;
+  }
+
+  private readonly renderCanvas = (): void => {
+    if (!this.running) return;
+    requestAnimationFrame(this.renderCanvas);
+    if (this.video.readyState < 2) return;
+    const { width: w, height: h } = this.canvas;
+    try {
+      this.maybeSegment(this.video, w, h);
+      const ctx = this.ctx;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(this.video, 0, 0, w, h);
+      if (this.hasMask) {
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.drawImage(this.mask, 0, 0, w, h);
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.filter = `blur(${this.opts.blurRadius}px)`;
+        ctx.drawImage(this.video, 0, 0, w, h);
+        ctx.filter = 'none';
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    } catch {
+      /* un frame fallido no debe matar el loop */
+    }
+  };
+
+  // ── Segmentación → máscara (compartido) ────────────────────────────────────
   private updateMask(mask?: MPMask): void {
     if (!mask) return;
     if (this.mask.width !== mask.width || this.mask.height !== mask.height) {
@@ -167,33 +275,10 @@ export class BackgroundBlur {
     const data = mask.getAsUint8Array();
     const img = this.maskCtx.createImageData(mask.width, mask.height);
     for (let i = 0; i < data.length; i++) {
-      // selfie_segmenter: categoría 0 => persona (opaca/nítida), resto => fondo.
+      // selfie_segmenter: categoría 0 => persona (nítida), resto => fondo.
       img.data[i * 4 + 3] = data[i] === 0 ? 255 : 0;
     }
     this.maskCtx.putImageData(img, 0, 0);
     this.hasMask = true;
-  }
-
-  /** Compone persona nítida sobre fondo difuminado usando la última máscara. */
-  private composite(): void {
-    const { width: w, height: h } = this.canvas;
-    const ctx = this.ctx;
-
-    if (!this.hasMask) {
-      ctx.drawImage(this.video, 0, 0, w, h);
-      return;
-    }
-    // 1) persona nítida
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(this.video, 0, 0, w, h);
-    // 2) recorta a la silueta de la persona
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.drawImage(this.mask, 0, 0, w, h);
-    // 3) fondo difuminado detrás
-    ctx.globalCompositeOperation = 'destination-over';
-    ctx.filter = `blur(${this.opts.blurRadius}px)`;
-    ctx.drawImage(this.video, 0, 0, w, h);
-    ctx.filter = 'none';
-    ctx.globalCompositeOperation = 'source-over';
   }
 }

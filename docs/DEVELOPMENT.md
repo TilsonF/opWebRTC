@@ -52,6 +52,12 @@ Fuente: `packages/signaling-server/src/config.ts`.
 
 ## Blur (nota de dev)
 `@opwebrtc/core/blur` descarga MediaPipe (wasm + modelo) desde CDN en runtime.
-En el demo se carga de forma diferida (solo al activar blur). **Bug abierto**:
-se ve fluido en local pero congelado en la vista remota → investigar vía
-insertable streams / WebCodecs.
+En el demo se carga de forma diferida (solo al activar blur).
+
+Salida por **Insertable Streams** (`MediaStreamTrackProcessor`/`Generator`) →
+track nativo que el encoder transmite sin congelarse en el remoto (Chromium).
+**Fallback** a `canvas.captureStream` en Safari/Firefox (donde puede congelarse;
+limitante del navegador). Fuerza el fallback con `new BackgroundBlur({ forceCanvas: true })`.
+
+El test `e2e/tests/blur-transport.spec.ts` valida el mecanismo (track de
+Generator se transmite en vivo por WebRTC) sin depender de MediaPipe/GPU.
