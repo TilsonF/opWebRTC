@@ -39,8 +39,13 @@ declare global {
  * nunca se detiene aunque la GPU tarde.
  */
 export interface BlurOptions {
-  /** Radio del difuminado en px. Por defecto 12. */
+  /** Radio del difuminado del fondo en px. Por defecto 12. */
   blurRadius?: number;
+  /**
+   * Suavizado del borde de la máscara (feather) en px. Reduce el "ruido"/filo
+   * dentado del recorte persona/fondo. Por defecto 4.
+   */
+  maskBlur?: number;
   /** Tasa de SEGMENTACIÓN en fps. Por defecto 24. */
   fps?: number;
   /** Carpeta wasm de MediaPipe. */
@@ -89,6 +94,7 @@ export class BackgroundBlur {
   constructor(opts: BlurOptions = {}) {
     this.opts = {
       blurRadius: opts.blurRadius ?? 12,
+      maskBlur: opts.maskBlur ?? 4,
       fps: opts.fps ?? 24,
       wasmPath: opts.wasmPath ?? CDN_WASM,
       modelAssetPath: opts.modelAssetPath ?? CDN_MODEL,
@@ -186,6 +192,7 @@ export class BackgroundBlur {
     ctx.drawImage(frame, 0, 0, w, h);
     if (this.hasMask) {
       ctx.globalCompositeOperation = 'destination-in';
+      ctx.filter = `blur(${this.opts.maskBlur}px)`; // feather del borde
       ctx.drawImage(this.mask, 0, 0, w, h);
       ctx.globalCompositeOperation = 'destination-over';
       ctx.filter = `blur(${this.opts.blurRadius}px)`;
@@ -253,6 +260,7 @@ export class BackgroundBlur {
       ctx.drawImage(this.video, 0, 0, w, h);
       if (this.hasMask) {
         ctx.globalCompositeOperation = 'destination-in';
+        ctx.filter = `blur(${this.opts.maskBlur}px)`; // feather del borde
         ctx.drawImage(this.mask, 0, 0, w, h);
         ctx.globalCompositeOperation = 'destination-over';
         ctx.filter = `blur(${this.opts.blurRadius}px)`;
