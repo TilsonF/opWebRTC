@@ -26,7 +26,7 @@
   },
   "keywords": ["webrtc", "signaling", "websocket", "turn", "p2p"],
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
