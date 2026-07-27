@@ -36,12 +36,12 @@
     "rxjs": ">=7"
   },
   "devDependencies": {
-    "@angular/core": "^18.2.0",
+    "@angular/core": "^22.0.8",
     "@opwebrtc/core": "*",
     "rxjs": "^7.8.1",
     "tsup": "^8.3.5",
-    "typescript": "^5.7.2",
-    "zone.js": "~0.14.10"
+    "typescript": "^7.0.2",
+    "zone.js": "~0.16.2"
   },
   "license": "MIT"
 }
