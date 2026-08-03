@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@opwebrtc/core": "*",
-    "@mediapipe/tasks-vision": "^0.10.18"
+    "@mediapipe/tasks-vision": "^1.0.1"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
